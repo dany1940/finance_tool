@@ -1,5 +1,5 @@
 [project]
-name = "finance-tool"
+name = "finance_tool"
 version = "0.1.0"
 description = ""
 authors = [
@@ -8,12 +8,6 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "streamlit (>=1.41.1,<2.0.0)",
-    "pandas (>=2.2.3,<3.0.0)",
-    "numpy (>=2.2.2,<3.0.0)",
-    "matplotlib (>=3.10.0,<4.0.0)",
-    "yfinance (>=0.2.52,<0.3.0)",
-    "ta (>=0.11.0,<0.12.0)"
 ]
 
 
