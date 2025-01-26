@@ -1,6 +1,6 @@
 # tests/test_main.py
-
 from finance_tool.main import add
+
 
 def test_add():
     """Test the add function."""
