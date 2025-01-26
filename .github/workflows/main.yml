@@ -1,0 +1,47 @@
+name: CI/CD with Poetry
+
+on:
+  push:
+    branches:
+      - main
+      - feature/* # Run for branches starting with "feature/"
+  pull_request:
+    branches:
+      - main
+      - feature/*
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout the code
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Set up Python
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+
+      # Install Poetry
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+          echo "export PATH=$HOME/.local/bin:$PATH" >> $GITHUB_ENV
+
+      # Install dependencies using Poetry
+      - name: Install dependencies
+        run: |
+          poetry install
+
+      # Run unit tests
+      - name: Run tests
+        run: |
+          poetry run pytest --cov=.
+
+      # Run linting
+      - name: Run linting
+        run: |
+          poetry run flake8 .
