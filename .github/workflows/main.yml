@@ -34,7 +34,7 @@ jobs:
       # Install dependencies using Poetry
       - name: Install dependencies
         run: |
-          poetry install
+          poetry install --no-root
 
       # Run unit tests
       - name: Run tests
