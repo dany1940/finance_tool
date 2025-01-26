@@ -1,3 +1,4 @@
-import pandas as pd 
 
-"""This is just a test"""
+def add(a, b):
+    """Add two numbers."""
+    return a + b
