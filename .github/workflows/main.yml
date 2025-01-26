@@ -3,11 +3,11 @@ name: CI/CD with Poetry
 on:
   push:
     branches:
-      - main
+      - master
       - feature/* # Run for branches starting with "feature/"
   pull_request:
     branches:
-      - main
+      - master
       - feature/*
 
 jobs:
