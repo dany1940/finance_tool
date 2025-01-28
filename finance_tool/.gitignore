@@ -4,6 +4,7 @@ __pychache__/
 .vscode/
 *.__pyc
 *.pyo
+.env
 
 
 
