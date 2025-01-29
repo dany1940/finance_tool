@@ -1,40 +1,58 @@
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-from confluent_kafka import Consumer
-from models import StockData
-from db import get_db
+import asyncio
 import json
-from threading import Thread
+import logging
+from confluent_kafka import Consumer
+from sqlalchemy.ext.asyncio import AsyncSession
+from finance_tool.db import get_db
+from finance_tool.models import StockData
+from fastapi import APIRouter
+from datetime import datetime
 
-# Initialize router
-router = APIRouter()
-
-# Kafka consumer configuration
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 consumer_conf = {
     "bootstrap.servers": "localhost:9092",
     "group.id": "fastapi-consumer",
     "auto.offset.reset": "earliest",
 }
+router = APIRouter()
 consumer = Consumer(consumer_conf)
 
-# Save data to PostgreSQL
-async def save_to_db(db: AsyncSession, stock_data: dict):
-    new_data = StockData(
-        symbol=stock_data["symbol"],
-        timestamp=stock_data["timestamp"],
-        open=stock_data["open"],
-        high=stock_data["high"],
-        low=stock_data["low"],
-        close=stock_data["close"],
-        volume=stock_data["volume"]
-    )
-    db.add(new_data)
-    await db.commit()
 
-# Continuous consumer function
-def consume_messages_continuously(db: AsyncSession):
+async def save_to_db(stock_data: dict, db_session: AsyncSession):
     """
-    Continuously consume messages from Kafka.
+    Save stock data to the database with a proper session.
+    """
+    async for db_session in db_session:
+        try:
+            # Assuming stock_data['timestamp'] is a timezone-aware datetime object
+            timestamp = stock_data["timestamp"]
+            timestamp = datetime.fromisoformat(stock_data["timestamp"])
+            # Convert timezone-aware datetime to naive (removing tzinfo)
+            if timestamp.tzinfo is not None:
+                timestamp = timestamp.replace(tzinfo=None)
+
+            # Insert the stock data into the database
+            new_data = StockData(
+                symbol=stock_data["symbol"],
+                timestamp=timestamp,
+            )
+            logger.info(f"Saving data: {new_data}")
+            db_session.add(new_data)
+            await db_session.flush()
+            await db_session.commit()
+            logger.info(f"✅ Saved to DB: {stock_data}")
+        except Exception as e:
+            logger.error(f"❌ Error saving to DB: {e}") # Log the error
+            await db_session.rollback()
+        finally:
+            await db_session.close()
+            logger.info("🔒 Database session closed.")
+
+
+def consume_messages_continuously():
+    """
+    Consume messages from Kafka and save them to the database.
     """
     consumer.subscribe(["stock_data"])
     try:
@@ -43,28 +61,24 @@ def consume_messages_continuously(db: AsyncSession):
             if msg is None:
                 continue
             if msg.error():
-                print(f"Error: {msg.error()}")
+                logger.error(f"Consumer error: {msg.error()}")
                 continue
+            stock_data = json.loads(msg.value())
+            logger.info(f"Received: {stock_data}")
 
-            # Parse the Kafka message
-            stock_data = json.loads(msg.value().decode("utf-8"))
-            print(f"Consumed: {stock_data}")
-
-            # Save to database
-            asyncio.run(save_to_db(db, stock_data))
+            # Fix: Ensure each message gets its own session
+            asyncio.run(save_to_db(stock_data, get_db()))
+    except Exception as e:
+        logger.error(f"❌ Error consuming message: {e}")
     finally:
         consumer.close()
 
 
-
-# Start the consumer in a background thread
 def start_consumer():
     """
-    Start the Kafka consumer in a separate thread.
+    Start Kafka consumer in a separate thread.
     """
-    consumer_thread = Thread(
-        target=lambda: consume_messages_continuously(next(get_db())),
-        daemon=True
-    )
+    from threading import Thread
+    consumer_thread = Thread(target=consume_messages_continuously, daemon=True)
     consumer_thread.start()
-
+    consumer_thread.join()  # Wait for the thread to finish

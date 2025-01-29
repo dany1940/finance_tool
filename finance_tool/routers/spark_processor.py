@@ -12,6 +12,7 @@ spark = SparkSession.builder \
     .appName("SparkProcessor") \
     .getOrCreate()
 
+
 def fetch_historical_data(symbol: str, start_date: str, end_date: str):
     """
     Fetch historical stock data from Yahoo Finance.
@@ -25,6 +26,7 @@ def fetch_historical_data(symbol: str, start_date: str, end_date: str):
     if not data.empty:
         return data.reset_index() # Reset index to make it Spark-compatible
     return pd.DataFrame() # Return empty DataFrame if no data is available
+
 
 @router.post("/historical")
 def analyze_historical_data(symbol: str, start_date: str, end_date: str):
@@ -56,6 +58,7 @@ def analyze_historical_data(symbol: str, start_date: str, end_date: str):
     results = {row.asDict().keys()[0]: row.asDict() for row in analysis}
 
     return {"symbol": symbol, "analysis": results}
+
 
 @router.post("/process-realtime")
 def process_realtime_data(kafka_messages: list):

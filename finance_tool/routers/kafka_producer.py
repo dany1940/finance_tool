@@ -1,43 +1,45 @@
-from confluent_kafka import Producer
 import json
 import time
+import logging
 from threading import Thread
+from confluent_kafka import Producer
 import yfinance as yf
+from fastapi import APIRouter
+
+router = APIRouter()
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Kafka producer configuration
 producer_conf = {
     "bootstrap.servers": "localhost:9092",
     "client.id": "fastapi-producer",
-    "enable.idempotence": True,
 }
 producer = Producer(producer_conf)
 
-# Function to fetch stock data from Yahoo Finance
-def fetch_realtime_data(symbol: str):
-    """
-    Fetch the latest stock data for a given symbol using Yahoo Finance.
-    """
+
+def fetch_realtime_data(symbol):
     ticker = yf.Ticker(symbol)
     data = ticker.history(period="1d", interval="1m")
     if not data.empty:
-        latest = data.iloc[-1]
         return {
             "symbol": symbol,
-            "timestamp": latest.name.strftime("%Y-%m-%d %H:%M:%S"),
-            "open": latest["Open"],
-            "high": latest["High"],
-            "low": latest["Low"],
-            "close": latest["Close"],
-            "volume": latest["Volume"],
+            "timestamp": data.index[-1].isoformat(),
+            "open": data["Open"].iloc[-1],
+            "high": data["High"].iloc[-1],
+            "low": data["Low"].iloc[-1],
+            "close": data["Close"].iloc[-1],
+            "volume": int(data["Volume"].iloc[-1]),
         }
     return None
 
-# Continuous producer function
+
 def produce_messages_continuously():
     """
-    Continuously produce stock data to Kafka.
+    This function runs continuously in the background to fetch and send stock data to Kafka.
     """
-    symbols = ["AAPL", "GOOGL", "MSFT"]  # Stock symbols to track
+    symbols = ["AAPL", "GOOGL", "MSFT"]  # Example stocks
     while True:
         for symbol in symbols:
             stock_data = fetch_realtime_data(symbol)
@@ -46,15 +48,14 @@ def produce_messages_continuously():
                     topic="stock_data",
                     key=stock_data["symbol"],
                     value=json.dumps(stock_data),
-                    callback=lambda err, msg: print(f"Produced: {msg.topic()}") if not err else print(f"Error: {err}")
                 )
-        producer.flush()
-        time.sleep(60)  # Fetch real-time data every minute
+                producer.flush()
+                logger.info(f"📊 Produced data: {stock_data}")
+        time.sleep(60)  # Fetch data every 60 seconds
 
-# Start the producer in a background thread
+
 def start_producer():
     """
-    Start the Kafka producer in a separate thread.
+    Starts the Kafka producer in a separate thread when FastAPI launches.
     """
-    producer_thread = Thread(target=produce_messages_continuously, daemon=True)
-    producer_thread.start()
+    Thread(target=produce_messages_continuously, daemon=True).start()

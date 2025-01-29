@@ -1,54 +1,41 @@
-from fastapi import FastAPI
-import subprocess
-import time
-from routers.kafka_producer import start_producer
-from routers.kafka_consumer import start_consumer
-from routers import spark_processor
+from finance_tool.routers import kafka_producer, kafka_consumer, spark_processor
+from finance_tool.db import engine
+from finance_tool.models import Base
+import logging
+from fastapi import FastAPI, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from finance_tool.db import get_db
+from sqlalchemy import text
 
-app = FastAPI()
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+app = FastAPI(docs_url="/docs", redoc_url=None)
 
-# Include routers for Spark processing
-app.include_router(spark_processor.router, prefix="/spark", tags=["Spark Processor"])
+# Include routers
+app.include_router(kafka_producer.router, prefix="/producer", tags=["Producer"])
+app.include_router(kafka_consumer.router, prefix="/consumer", tags=["Consumer"])
+app.include_router(spark_processor.router, prefix="/spark", tags=["Spark"])
 
-def start_zookeeper():
-    """
-    Start Zookeeper server.
-    """
-    print("Starting Zookeeper...")
-    subprocess.Popen(
-        ["zookeeper-server-start", "/usr/local/etc/kafka/zookeeper.properties"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.STDOUT
-    )
-    time.sleep(5)  # Allow Zookeeper to initialize
-
-def start_kafka():
-    """
-    Start Kafka server.
-    """
-    print("Starting Kafka...")
-    subprocess.Popen(
-        ["kafka-server-start", "/usr/local/etc/kafka/server.properties"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.STDOUT
-    )
-    time.sleep(5)  # Allow Kafka to initialize
 
 @app.on_event("startup")
-def startup_event():
+async def startup_event():
     """
-    Automatically start Zookeeper, Kafka, Kafka producer, and Kafka consumer.
+    On app startup: Initialize the database and start Kafka producer/consumer.
     """
-    print("Starting services...")
-    start_zookeeper()  # Start Zookeeper
-    start_kafka()      # Start Kafka
-    start_producer()   # Start Kafka producer
-    start_consumer()   # Start Kafka consumer
-    print("All services started successfully!")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    kafka_producer.start_producer()
+    kafka_consumer.start_consumer()
+    logger.info("🚀 App is ready.")
+
+
+
+@app.get("/db-test")
+async def db_test(db: AsyncSession = Depends(get_db)):
+    await db.execute(text("INSERT INTO stock_data (symbol, timestamp) VALUES ('AAPL', '2025-01-28T15:59:00-05:00')"))
+    await db.commit()
+
 
 @app.get("/")
 def root():
-    """
-    Root endpoint to check if the application is running.
-    """
-    return {"message": "FastAPI with Kafka and Spark is running!"}
+    return {"message": "FastAPI with Kafka, Spark, and PostgreSQL is running!"}
