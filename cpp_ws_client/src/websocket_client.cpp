@@ -1,49 +1,74 @@
 #include "websocket_client.h"
 #include <boost/asio/connect.hpp>
-#include <boost/beast/core.hpp>
-#include <boost/beast/websocket.hpp>
-#include <iostream>
+#include <boost/asio/ip/tcp.hpp>
+#include <boost/system/error_code.hpp>
 
-using namespace std;
-using namespace boost::asio;
-using namespace boost::beast;
+WebSocketClient::WebSocketClient(const std::string &url)
+    : ws(ioc), server_url(url), connection_alive(false) {}
 
-// **WebSocket Connection Function**
-void connect_to_exchange(const string &exchange_name, const string &exchange_url) {
-    io_context ioc;
-    tcp::resolver resolver{ioc};
-    websocket::stream<tcp::socket> ws{ioc};
+void WebSocketClient::connect() {
+    boost::asio::ip::tcp::resolver resolver(ioc);
+    boost::system::error_code ec;
+    auto const results = resolver.resolve(server_url, "443", ec);
 
-    try {
-        // Resolve hostname and connect
-        auto const results = resolver.resolve(exchange_url, "443");
-        connect(ws.next_layer(), results.begin(), results.end());
+    if (ec) {
+        std::cerr << "❌ WebSocket DNS Resolution Failed: " << ec.message() << std::endl;
+        throw std::runtime_error("DNS resolution failed");
+    }
 
-        // Perform WebSocket handshake
-        ws.handshake(exchange_url, "/");
-        cout << "✅ Connected to " << exchange_name << endl;
+    boost::asio::connect(ws.next_layer(), results.begin(), results.end());
+    ws.handshake(server_url, "/");
+    std::cout << "✅ Connected to WebSocket: " << server_url << std::endl;
 
-        // Subscribe to stock data
-        ws.write(buffer("{\"subscribe\": [\"AAPL\"]}"));
+    connection_alive = true;  // ✅ Set connection as alive
+}
 
-        // Read messages
-        for (;;) {
-            flat_buffer buffer;
-            ws.read(buffer);
-            cout << "📩 Received: " << buffers_to_string(buffer.data()) << endl;
+
+void WebSocketClient::connect_with_retry() {
+    int retries = 5;
+    while (retries > 0) {
+        try {
+            connect();
+            return;
+        } catch (const std::exception &e) {
+            std::cerr << "❌ Connection failed: " << e.what() << ". Retrying in 3 seconds..." << std::endl;
+            retries--;
+            std::this_thread::sleep_for(std::chrono::seconds(3));
         }
-    } catch (exception &e) {
-        cerr << "❌ WebSocket Error: " << e.what() << endl;
+    }
+    std::cerr << "❌ WebSocket connection permanently failed!" << std::endl;
+}
+
+void WebSocketClient::send_message(const std::string &message) {
+    ws.write(boost::asio::buffer(message));
+}
+
+void WebSocketClient::receive_message() {
+    boost::beast::flat_buffer buffer;
+    ws.read(buffer);
+    std::cout << "📩 Received: " << boost::beast::buffers_to_string(buffer.data()) << std::endl;
+    connection_alive = true;  // ✅ Mark connection as alive if a message is received
+}
+
+void WebSocketClient::send_heartbeat() {
+    while (true) {
+        std::this_thread::sleep_for(std::chrono::seconds(5));  // ✅ Send heartbeat every 5 seconds
+
+        if (connection_alive) {
+            send_message("ping");  // ✅ Send a heartbeat message
+            std::cout << "💓 Sent heartbeat to server" << std::endl;
+        } else {
+            std::cerr << "⚠️ Connection lost! Retrying..." << std::endl;
+            connect_with_retry();
+        }
     }
 }
 
-// **Heartbeat Function**
-void send_heartbeat(const string &exchange) {
-    cout << "💓 Sending heartbeat to " << exchange << endl;
+bool WebSocketClient::is_alive() {
+    return connection_alive;
 }
 
-// **Send Data to FastAPI**
-void send_to_fastapi(const string &exchange, const string &payload) {
-    (void)exchange;
-    cout << "📤 Sending data to FastAPI: " << payload << endl;
+void WebSocketClient::close() {
+    ws.close(boost::beast::websocket::close_code::normal);
+    connection_alive = false;
 }

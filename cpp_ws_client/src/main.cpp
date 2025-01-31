@@ -12,12 +12,20 @@ int main() {
     // Initialize RDMA for Zero-Copy transmission
     ZMQHandler zmq_handler("127.0.0.1", 5555);
 
-    // Initialize DPDK for high-speed networking
+    std::string ws_url = "wss://streamer.finance.yahoo.com";
+    WebSocketClient client(ws_url);
 
-    // Start WebSocket connections for multiple stock exchanges
-    thread yahoo_thread(connect_to_exchange, "yahoo", "wss://streamer.finance.yahoo.com");
+    client.connect_with_retry();  // ✅ Use retry function
 
-    yahoo_thread.join();
+    // ✅ Start heartbeat in a separate thread
+    std::thread heartbeat_thread(&WebSocketClient::send_heartbeat, &client);
 
+    while (true) {
+        client.receive_message();
+    }
+
+    client.close();
+    heartbeat_thread.join();  // ✅ Ensure heartbeat thread is closed properly
     return 0;
+
 }
