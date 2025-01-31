@@ -1,58 +1,60 @@
 import asyncio
 import json
 import logging
+from fastapi import FastAPI, WebSocket
 from confluent_kafka import Consumer
 from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import datetime
 from finance_tool.db import get_db
 from finance_tool.models import StockData
-from fastapi import APIRouter
-from datetime import datetime
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+app = FastAPI()
+
+# Kafka Consumer Configuration
 consumer_conf = {
     "bootstrap.servers": "localhost:9092",
     "group.id": "fastapi-consumer",
     "auto.offset.reset": "earliest",
 }
-router = APIRouter()
 consumer = Consumer(consumer_conf)
 
 
 async def save_to_db(stock_data: dict, db_session: AsyncSession):
     """
-    Save stock data to the database with a proper session.
+    Save stock data to the database.
     """
-    async for db_session in db_session:
-        try:
-            # Assuming stock_data['timestamp'] is a timezone-aware datetime object
-            timestamp = stock_data["timestamp"]
-            timestamp = datetime.fromisoformat(stock_data["timestamp"])
-            # Convert timezone-aware datetime to naive (removing tzinfo)
-            if timestamp.tzinfo is not None:
-                timestamp = timestamp.replace(tzinfo=None)
+    try:
+        # Convert timestamp to a naive datetime object
+        timestamp = datetime.fromisoformat(stock_data["timestamp"])
+        if timestamp.tzinfo is not None:
+            timestamp = timestamp.replace(tzinfo=None)
 
-            # Insert the stock data into the database
-            new_data = StockData(
-                symbol=stock_data["symbol"],
-                timestamp=timestamp,
-            )
-            logger.info(f"Saving data: {new_data}")
-            db_session.add(new_data)
-            await db_session.flush()
-            await db_session.commit()
-            logger.info(f"✅ Saved to DB: {stock_data}")
-        except Exception as e:
-            logger.error(f"❌ Error saving to DB: {e}") # Log the error
-            await db_session.rollback()
-        finally:
-            await db_session.close()
-            logger.info("🔒 Database session closed.")
+        new_data = StockData(
+            symbol=stock_data["symbol"],
+            price=stock_data["price"],
+            timestamp=timestamp,
+        )
+
+        logger.info(f"📥 Saving to DB: {new_data}")
+        db_session.add(new_data)
+        await db_session.flush()
+        await db_session.commit()
+        logger.info(f"✅ Data saved successfully: {stock_data}")
+
+    except Exception as e:
+        logger.error(f"❌ Error saving to DB: {e}", exc_info=True)
+        await db_session.rollback()
+    finally:
+        await db_session.close()
+        logger.info("🔒 Database session closed.")
 
 
-def consume_messages_continuously():
+async def consume_kafka_messages():
     """
-    Consume messages from Kafka and save them to the database.
+    Asynchronously consume messages from Kafka and save them to PostgreSQL.
     """
     consumer.subscribe(["stock_data"])
     try:
@@ -63,22 +65,42 @@ def consume_messages_continuously():
             if msg.error():
                 logger.error(f"Consumer error: {msg.error()}")
                 continue
-            stock_data = json.loads(msg.value())
-            logger.info(f"Received: {stock_data}")
 
-            # Fix: Ensure each message gets its own session
-            asyncio.run(save_to_db(stock_data, get_db()))
+            stock_data = json.loads(msg.value())
+            logger.info(f"📥 Received Kafka message: {stock_data}")
+
+            # Use an async database session
+            async with get_db() as db_session:
+                await save_to_db(stock_data, db_session)
+
     except Exception as e:
-        logger.error(f"❌ Error consuming message: {e}")
+        logger.error(f"❌ Kafka Consumer Error: {e}", exc_info=True)
     finally:
         consumer.close()
 
 
-def start_consumer():
+@app.on_event("startup")
+async def startup_event():
     """
-    Start Kafka consumer in a separate thread.
+    Start Kafka consumer as a background task when FastAPI starts.
     """
-    from threading import Thread
-    consumer_thread = Thread(target=consume_messages_continuously, daemon=True)
-    consumer_thread.start()
-    consumer_thread.join()  # Wait for the thread to finish
+    loop = asyncio.get_event_loop()
+    loop.create_task(consume_kafka_messages())
+    logger.info("🚀 Kafka Consumer Started!")
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """
+    WebSocket endpoint for real-time stock updates.
+    """
+    await websocket.accept()
+    try:
+        while True:
+            data = await websocket.receive_text()
+            logger.info(f"📥 WebSocket received: {data}")
+
+            # Broadcast data to all connected clients
+            await websocket.send_text(f"ACK: {data}")
+    except Exception as e:
+        logger.error(f"❌ WebSocket Error: {e}", exc_info=True)
