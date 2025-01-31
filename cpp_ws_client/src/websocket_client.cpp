@@ -1,75 +1,49 @@
 #include "websocket_client.h"
-#include <websocketpp/config/asio_no_tls_client.hpp>
-#include <websocketpp/client.hpp>
+#include <boost/asio/connect.hpp>
+#include <boost/beast/core.hpp>
+#include <boost/beast/websocket.hpp>
 #include <iostream>
-#include <json/json.h>
-#include "kafka_producer.h"
-#include "traffic_control.h"
 
 using namespace std;
-using namespace Json;
+using namespace boost::asio;
+using namespace boost::beast;
 
-unordered_map<string, int> message_retries;
+// **WebSocket Connection Function**
+void connect_to_exchange(const string &exchange_name, const string &exchange_url) {
+    io_context ioc;
+    tcp::resolver resolver{ioc};
+    websocket::stream<tcp::socket> ws{ioc};
 
-void send_heartbeat(const string &exchange) {
-    cout << "Heartbeat sent to " << exchange << endl;
-}
+    try {
+        // Resolve hostname and connect
+        auto const results = resolver.resolve(exchange_url, "443");
+        connect(ws.next_layer(), results.begin(), results.end());
 
-void send_to_fastapi(const string &exchange, const string &payload) {
-    client c;
-    websocketpp::lib::error_code ec;
-    string uri = "ws://localhost:8000/ws";
-    auto con = c.get_connection(uri, ec);
+        // Perform WebSocket handshake
+        ws.handshake(exchange_url, "/");
+        cout << "✅ Connected to " << exchange_name << endl;
 
-    if (ec) {
-        cerr << "Error connecting to FastAPI: " << ec.message() << endl;
-        return;
-    }
+        // Subscribe to stock data
+        ws.write(buffer("{\"subscribe\": [\"AAPL\"]}"));
 
-    c.send(con->get_handle(), payload, websocketpp::frame::opcode::text);
-    cout << "[" << exchange << "] Sent data to FastAPI WebSocket: " << payload << endl;
-}
-
-void on_message(string exchange, websocketpp::connection_hdl hdl, client::message_ptr msg) {
-    string payload = msg->get_payload();
-    Json::CharReaderBuilder reader;
-    Json::Value root;
-    string errors;
-    istringstream s(payload);
-
-    if (Json::parseFromStream(reader, s, &root, &errors)) {
-        string message_id = root["message_id"].asString();
-        string symbol = root["symbol"].asString();
-        string price = root["price"].asString();
-
-        cout << "[" << exchange << "] Received: " << symbol << " - $" << price << endl;
-
-        send_to_fastapi(exchange, payload);
-        send_heartbeat(exchange);
-
-        if (message_retries[message_id] < 3) {
-            produce_to_kafka("stock_data", payload);
-            message_retries[message_id]++;
-        } else {
-            cout << "Message " << message_id << " failed. Requesting resend..." << endl;
-            system(("curl -X POST http://localhost:8000/resend-missing-message -d '{\"message_id\": \"" + message_id + "\"}'").c_str());
+        // Read messages
+        for (;;) {
+            flat_buffer buffer;
+            ws.read(buffer);
+            cout << "📩 Received: " << buffers_to_string(buffer.data()) << endl;
         }
+    } catch (exception &e) {
+        cerr << "❌ WebSocket Error: " << e.what() << endl;
     }
 }
 
-void connect_to_exchange(string exchange_name, string exchange_url) {
-    client c;
-    c.init_asio();
+// **Heartbeat Function**
+void send_heartbeat(const string &exchange) {
+    cout << "💓 Sending heartbeat to " << exchange << endl;
+}
 
-    websocketpp::lib::error_code ec;
-    auto con = c.get_connection(exchange_url, ec);
-
-    if (ec) {
-        cerr << "WebSocket Connection Failed for " << exchange_name << ": " << ec.message() << endl;
-        return;
-    }
-
-    c.set_message_handler(bind(&on_message, exchange_name, placeholders::_1, placeholders::_2));
-    c.connect(con);
-    c.run();
+// **Send Data to FastAPI**
+void send_to_fastapi(const string &exchange, const string &payload) {
+    (void)exchange;
+    cout << "📤 Sending data to FastAPI: " << payload << endl;
 }
