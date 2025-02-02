@@ -1,31 +1,43 @@
 #include <iostream>
 #include <thread>
-#include "../include/websocket_client.h"
-#include "../include/zmq_handler.h"
-#include "../include/dpdk_handler.h"
-#include "../include/zmq_kafka_producer.h"
-#include "../include/traffic_control.h"
-
-using namespace std;
+#include "websocket_client.h"
+#include "zmq_kafka_producer.h"
 
 int main() {
-    // Initialize RDMA for Zero-Copy transmission
-    ZMQHandler zmq_handler("127.0.0.1", 5555);
+    ZMQKafkaProducer kafka_producer("stock_data");  // ✅ Instantiate producer
 
-    std::string ws_url = "wss://streamer.finance.yahoo.com";
-    WebSocketClient client(ws_url);
+    // ✅ Use explicit WebSocket URLs
+    std::vector<std::tuple<std::string, std::string, std::vector<std::string>>> exchanges = {
+        {"Yahoo Finance", "wss://streamer.finance.yahoo.com", {"AAPL"}},
+        {"Binance", "wss://stream.binance.com", {"btcusdt@trade"}}
+    };
 
-    client.connect_with_retry();  // ✅ Use retry function
+    std::vector<std::thread> threads;
+    std::vector<std::shared_ptr<WebSocketClient>> clients;
 
-    // ✅ Start heartbeat in a separate thread
-    std::thread heartbeat_thread(&WebSocketClient::send_heartbeat, &client);
+    for (const auto& [exchange_name, exchange_url, stocks] : exchanges) {
+        std::cout << "🔹 Connecting to exchange: " << exchange_name << " (" << exchange_url << ")" << std::endl;
 
-    while (true) {
-        client.receive_message();
+        auto client = std::make_shared<WebSocketClient>(exchange_name, exchange_url, stocks, kafka_producer);
+        clients.push_back(client);
+
+        threads.emplace_back([client]() {
+            client->connect();
+            while (client->is_alive()) {
+                client->receive_message();
+            }
+        });
     }
 
-    client.close();
-    heartbeat_thread.join();  // ✅ Ensure heartbeat thread is closed properly
-    return 0;
+    for (auto& client : clients) {
+        threads.emplace_back(&WebSocketClient::send_heartbeat, client);
+    }
 
+    for (auto& thread : threads) {
+        if (thread.joinable()) {
+            thread.join();
+        }
+    }
+
+    return 0;
 }
