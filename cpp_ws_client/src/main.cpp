@@ -1,38 +1,50 @@
 #include <iostream>
 #include <thread>
-#include "websocket_client.h"
-#include "zmq_kafka_producer.h"
+#include <vector>
+#include <memory>
+#include "webSocketClient.h"
+#include "zmqKafkaProducer.h"
+#include <spdlog/spdlog.h> // Use spdlog for logging
+
+using namespace std;
+using namespace spdlog;
 
 int main() {
-    ZMQKafkaProducer kafka_producer("stock_data");  // ✅ Instantiate producer
+    // Initialize Kafka Producer
+    ZMQKafkaProducer kafkaProducer;
 
-    // ✅ Use explicit WebSocket URLs
-    std::vector<std::tuple<std::string, std::string, std::vector<std::string>>> exchanges = {
+    // Define WebSocket connections for different exchanges
+    vector<tuple<string, string, vector<string>>> exchanges = {
         {"Yahoo Finance", "wss://streamer.finance.yahoo.com", {"AAPL"}},
-        {"Binance", "wss://stream.binance.com", {"btcusdt@trade"}}
+        {"Binance", "wss://stream.binance.com", {"btcusdt@trade"}},
+        {"Coinbase", "wss://ws-feed.exchange.coinbase.com", {"BTC-USD"}}
     };
 
-    std::vector<std::thread> threads;
-    std::vector<std::shared_ptr<WebSocketClient>> clients;
+    vector<thread> threads;
+    vector<shared_ptr<WebSocketClient>> clients;
 
-    for (const auto& [exchange_name, exchange_url, stocks] : exchanges) {
-        std::cout << "🔹 Connecting to exchange: " << exchange_name << " (" << exchange_url << ")" << std::endl;
+    // Create WebSocket clients for each exchange
+    for (const auto& [exchangeName, exchangeUrl, stocks] : exchanges) {
+        info("Connecting to exchange: {} ({})", exchangeName, exchangeUrl);
 
-        auto client = std::make_shared<WebSocketClient>(exchange_name, exchange_url, stocks, kafka_producer);
+        auto client = make_shared<WebSocketClient>(exchangeName, exchangeUrl, stocks, kafkaProducer);
         clients.push_back(client);
 
+        // Launch WebSocket connection in a separate thread
         threads.emplace_back([client]() {
             client->connect();
-            while (client->is_alive()) {
-                client->receive_message();
+            while (client->isAlive()) {
+                client->receiveMessage();
             }
         });
     }
 
+    // Start heartbeat threads for connection monitoring
     for (auto& client : clients) {
-        threads.emplace_back(&WebSocketClient::send_heartbeat, client);
+        threads.emplace_back(&WebSocketClient::sendHeartbeat, client);
     }
 
+    // Wait for all threads to finish
     for (auto& thread : threads) {
         if (thread.joinable()) {
             thread.join();
