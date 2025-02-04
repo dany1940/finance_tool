@@ -40,7 +40,10 @@ void ZMQKafkaProducer::sendToKafka(const string &exchangeName, const string &mes
 
     try {
         json rawData = json::parse(message);
+        rawData["exchange"] = exchangeName;
+        string message = rawData.dump();
 
+        info("Mofied message with exchange: {}", rawData.dump());
         // Define Kafka topics per exchange
         static const unordered_map<string, string> exchangeToTopic = {
             {"coinbase", "coinbase_ticker"},

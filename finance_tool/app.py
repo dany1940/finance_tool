@@ -1,41 +1,41 @@
-from finance_tool.routers import kafka_producer, kafka_consumer, spark_processor
-from finance_tool.db import engine
-from finance_tool.models import Base
+import asyncio
 import logging
-from fastapi import FastAPI, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-from finance_tool.db import get_db
-from sqlalchemy import text
+from fastapi import FastAPI, WebSocket
+from finance_tool.routers.kafka_consumer import start_consumer, stop_consumer  # Import the consumer functions
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-app = FastAPI(docs_url="/docs", redoc_url=None)
 
-# Include routers
-app.include_router(kafka_producer.router, prefix="/producer", tags=["Producer"])
-app.include_router(kafka_consumer.router, prefix="/consumer", tags=["Consumer"])
-app.include_router(spark_processor.router, prefix="/spark", tags=["Spark"])
-
+app = FastAPI()
 
 @app.on_event("startup")
 async def startup_event():
     """
-    On app startup: Initialize the database and start Kafka producer/consumer.
+    Start Kafka consumer as a background task when FastAPI starts.
     """
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    kafka_producer.start_producer()
-    kafka_consumer.start_consumer()
-    logger.info("🚀 App is ready.")
+    start_consumer()
+    logger.info("🚀 FastAPI application started, Kafka consumer is running!")
 
+@app.on_event("shutdown")
+async def shutdown_event():
+    """
+    Stop Kafka consumer when FastAPI shuts down.
+    """
+    stop_consumer()
+    logger.info("⚠️ FastAPI is shutting down, Kafka consumer is stopping...")
 
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """
+    WebSocket endpoint for real-time stock updates.
+    """
+    await websocket.accept()
+    try:
+        while True:
+            data = await websocket.receive_text()
+            logger.info(f"📥 WebSocket received: {data}")
 
-@app.get("/db-test")
-async def db_test(db: AsyncSession = Depends(get_db)):
-    await db.execute(text("INSERT INTO stock_data (symbol, timestamp) VALUES ('AAPL', '2025-01-28T15:59:00-05:00')"))
-    await db.commit()
-
-
-@app.get("/")
-def root():
-    return {"message": "FastAPI with Kafka, Spark, and PostgreSQL is running!"}
+            # Broadcast data to all connected clients
+            await websocket.send_text(f"ACK: {data}")
+    except Exception as e:
+        logger.error(f"❌ WebSocket Error: {e}", exc_info=True)

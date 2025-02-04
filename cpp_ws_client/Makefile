@@ -56,3 +56,23 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp
 # Clean Build Files
 clean:
 	rm -rf $(BUILD_DIR) $(BIN_DIR)
+
+# Start Zookeeper
+start-zookeeper:
+	@echo "Starting Zookeeper..."
+	@nohup zookeeper-server-start /usr/local/etc/zookeeper/zoo.cfg &
+
+# Stop Zookeeper
+stop-zookeeper:
+	@echo "Stopping Zookeeper..."
+	@pkill -f zookeeper
+
+# Start Kafka
+start-kafka:
+	@echo "Starting Kafka..."
+	@nohup kafka-server-start /usr/local/etc/kafka/server.properties &
+
+# Stop Kafka
+stop-kafka:
+	@echo "Stopping Kafka..."
+	@pkill -f kafka
