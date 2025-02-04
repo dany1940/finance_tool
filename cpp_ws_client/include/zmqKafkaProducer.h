@@ -6,9 +6,13 @@
 #include <string>
 #include <unordered_map>
 #include <chrono>
+#include <nlohmann/json.hpp>
+
 
 using namespace std;
 using namespace chrono;
+using namespace nlohmann;
+
 
 class ZMQKafkaProducer {
 public:
@@ -16,6 +20,8 @@ public:
     ~ZMQKafkaProducer();
 
     void sendToKafka(const string &exchange_name, const string &message);
+    string generateUniqueId(const string &exchangeName, const json &rawData);
+    int64_t getTimestamp(const json &rawData);
 
 private:
     rd_kafka_t *producer;

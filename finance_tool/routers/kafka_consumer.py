@@ -16,6 +16,7 @@ consumer_conf = {
     "auto.offset.reset": "earliest",
 }
 consumer = Consumer(consumer_conf)
+consumer.subscribe(["binance_ticker", "coinbase_ticker"])  # Subscribe to both topics
 
 shutdown_event = asyncio.Event()  # Shutdown event for graceful shutdown
 
@@ -24,38 +25,38 @@ async def save_to_db(data: dict, db_session):
     Save stock data to the database, choosing between Binance and Coinbase based on the 'exchange' field
     """
     try:
-        exchange_name = data.get("exchange")
-
+        exchange_name = data.get("exchange", "").lower()
+        logger.info(f"📥 Saving data to DB for exchange: {exchange_name}")
         # Convert timestamp to a naive datetime object
-        timestamp = datetime.fromisoformat(data["timestamp"])
-        if timestamp.tzinfo is not None:
-            timestamp = timestamp.replace(tzinfo=None)
+        if exchange_name.lower() == "coinbase":
+            data = CoinbaseModel(
+                unique_id=data["uniqueId"],
+                symbol=data["product_id"],
+                trade_id=data["trade_id"]
 
-        if exchange_name == "binance":
-            binance_data = BinanceModel(
-                symbol=data["symbol"],
-                price=data["price"],
-                best_ask=data["best_ask"],
-                best_ask_size=data["best_ask_size"],
             )
-            db_session.add(binance_data)
-            await db_session.commit()
-            logger.info(f"📥 Data saved to Binance table: {binance_data}")
+            logger.info(f"📥 Data saved to Coinbase table: {data}")
 
-        elif exchange_name == "coinbase":
-            coinbase_data = CoinbaseModel(
-                symbol=data["symbol"],
-                price=data["price"],
-                best_ask=data["best_ask"],
-                best_ask_size=data["best_ask_size"],
+        elif exchange_name.lower() == "binance":
+            data = BinanceModel(
+                unique_id=data["uniqueId"],
+                event_time=data["E"],
+                is_maker=data["M"],
+                timestamp=data["T"],
+                price=float(data["p"]),
+                quantity=float(data["q"]),
+                symbol=data["s"],
+                trade_id=data["t"],
             )
-            db_session.add(data)
-            await db_session.flush() # Use await for async flush
-            await db_session.commit() # Use await for async commit
-            logger.info(f"📥 Data saved to Coinbase table: {coinbase_data}")
+
+            logger.info(f"📥 Data saved to Binance table: {data}")
 
         else:
             logger.warning(f"⚠️ Unsupported exchange: {exchange_name}")
+        db_session.add(data)
+
+        await db_session.flush()
+        await db_session.commit() # Use await for async flush
 
     except Exception as e:
         logger.error(f"❌ Error saving to DB: {e}", exc_info=True)

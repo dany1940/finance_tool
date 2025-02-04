@@ -3,6 +3,7 @@
 #include <sstream>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
+#include <chrono>
 
 using namespace std;
 using namespace chrono;
@@ -19,10 +20,10 @@ ZMQKafkaProducer::ZMQKafkaProducer() {
     zmqHandler = new ZMQHandler("127.0.0.1", 5555);
 
     if (!producer) {
-        error("❌ Kafka Producer Initialization Failed!");
+        error("Kafka Producer Initialization Failed!");
         exit(1);
     }
-    info("✅ Kafka Producer Initialized!");
+    info("Kafka Producer Initialized!");
 }
 
 // Cleans up resources
@@ -30,10 +31,44 @@ ZMQKafkaProducer::~ZMQKafkaProducer() {
     rd_kafka_flush(producer, 1000);
     rd_kafka_destroy(producer);
     delete zmqHandler;
-    info("✅ Kafka Producer Shutdown Complete!");
+    info("Kafka Producer Shutdown Complete!");
 }
 
-// Sends message to Kafka under the appropriate topic
+// Generates a unique ID dynamically
+string ZMQKafkaProducer::generateUniqueId(const string &exchangeName, const json &rawData) {
+    if (rawData.contains("trade_id")) {
+        return exchangeName + "_" + to_string(rawData["trade_id"].get<int64_t>());
+    } else if (rawData.contains("t")) {
+        return exchangeName + "_" + to_string(rawData["t"].get<int64_t>());
+    }
+    return exchangeName + "_" + to_string(duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count());
+}
+
+// Gets the best available timestamp
+
+int64_t ZMQKafkaProducer::getTimestamp(const json &rawData) {
+    if (rawData.contains("T")) { // Binance timestamp (already in milliseconds)
+        return rawData["T"].get<int64_t>();
+    } else if (rawData.contains("time")) { // Coinbase timestamp (ISO 8601)
+        string isoTime = rawData["time"].get<string>();
+
+        std::tm tm = {};
+        std::istringstream ss(isoTime);
+        ss >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%S");
+
+        // Convert to time_t (seconds since epoch)
+        time_t timeSinceEpoch = mktime(&tm);
+
+        // Convert to milliseconds
+        int64_t milliseconds = static_cast<int64_t>(timeSinceEpoch) * 1000;
+
+        return milliseconds;
+    } else {
+        return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count(); // Default: Current time
+    }
+}
+
+// Sends message to Kafka with a unique ID and timestamp
 void ZMQKafkaProducer::sendToKafka(const string &exchangeName, const string &message) {
     string exchangeLower = exchangeName;
     transform(exchangeLower.begin(), exchangeLower.end(), exchangeLower.begin(), ::tolower);
@@ -41,51 +76,52 @@ void ZMQKafkaProducer::sendToKafka(const string &exchangeName, const string &mes
     try {
         json rawData = json::parse(message);
         rawData["exchange"] = exchangeName;
-        string message = rawData.dump();
 
-        info("Mofied message with exchange: {}", rawData.dump());
+        // Assign unique ID and timestamps
+        rawData["uniqueId"] = generateUniqueId(exchangeName, rawData);
+        rawData["timestamp"] = getTimestamp(rawData);
+        rawData["timestampSentToKafka"] = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+
+        string modifiedMessage = rawData.dump();
+        info("Modified message with unique ID: {}", modifiedMessage);
+
         // Define Kafka topics per exchange
         static const unordered_map<string, string> exchangeToTopic = {
             {"coinbase", "coinbase_ticker"},
-            {"binance", "binance_ticker"},
-            {"yahoo finance", "yahoo_ticker"}
+            {"binance", "binance_ticker"}
         };
 
-        // Check if exchange is supported
         auto it = exchangeToTopic.find(exchangeLower);
         if (it == exchangeToTopic.end()) {
-            warn("⚠️ Unsupported exchange: {}", exchangeLower);
+            warn("Unsupported exchange: {}", exchangeLower);
             return;
         }
 
         string kafkaTopicName = it->second;
 
-        // Check if topic is already created
         if (kafkaTopics.find(kafkaTopicName) == kafkaTopics.end()) {
             kafkaTopics[kafkaTopicName] = rd_kafka_topic_new(producer, kafkaTopicName.c_str(), NULL);
             if (!kafkaTopics[kafkaTopicName]) {
-                error("❌ Kafka Topic Creation Failed: {}", kafkaTopicName);
+                error("Kafka Topic Creation Failed: {}", kafkaTopicName);
                 return;
             }
-            info("✅ Kafka Topic Created: {}", kafkaTopicName);
+            info("Kafka Topic Created: {}", kafkaTopicName);
         }
 
-        // Send message to Kafka
         int err = rd_kafka_produce(kafkaTopics[kafkaTopicName], RD_KAFKA_PARTITION_UA, RD_KAFKA_MSG_F_COPY,
-                                   (void *)message.c_str(), message.size(),
+                                   (void *)modifiedMessage.c_str(), modifiedMessage.size(),
                                    NULL, 0, NULL);
 
         if (err == -1) {
-            error("❌ Kafka Send Error: {}", rd_kafka_err2str(rd_kafka_last_error()));
+            error("Kafka Send Error: {}", rd_kafka_err2str(rd_kafka_last_error()));
         } else {
-            info("📩 Sent to Kafka ({}): {}", kafkaTopicName, message);
+            info("Sent to Kafka ({}): {}", kafkaTopicName, modifiedMessage);
         }
 
-        // Poll Kafka to ensure message is delivered
         rd_kafka_poll(producer, 0);
-        info("✅ Kafka Poll Completed for topic: {}", kafkaTopicName);
+        info("Kafka Poll Completed for topic: {}", kafkaTopicName);
 
     } catch (const exception &e) {
-        error("❌ Kafka Send Error: {}", e.what());
+        error("Kafka Send Error: {}", e.what());
     }
 }
