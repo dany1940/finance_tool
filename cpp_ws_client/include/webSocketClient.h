@@ -35,6 +35,8 @@ public:
     void close();               // Close WebSocket connection
     void sendSubscriptions();   // Subscribe to stock symbols
     string getStockList();      // Get subscribed stocks
+    void authenticateAndSubscribe(); //authentificate exchanges
+
 
 private:
     IoContext::io_context ioc;  // Boost ASIO IO context

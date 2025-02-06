@@ -17,7 +17,8 @@ int main() {
     vector<tuple<string, string, vector<string>>> exchanges = {
         {"Yahoo Finance", "wss://streamer.finance.yahoo.com", {"AAPL"}},
         {"Binance", "wss://stream.binance.com", {"btcusdt@trade"}},
-        {"Coinbase", "wss://ws-feed.exchange.coinbase.com", {"BTC-USD"}}
+        {"Coinbase", "wss://ws-feed.exchange.coinbase.com", {"BTC-USD"}},
+        {"Polygon",  "wss://delayed.polygon.io",  {"options"}}
     };
 
     vector<thread> threads;

@@ -37,6 +37,7 @@ void WebSocketClient::connect() {
         {"Yahoo Finance", "443"},
         {"Binance", "9443"},
         {"Coinbase", "443"},
+        {"Polygon",  "443"}
     };
 
     stdx::string chosenPort = portMapping[exchangeName];
@@ -80,15 +81,71 @@ void WebSocketClient::connect() {
 
     log::info("SSL Handshake Successful for {}", exchangeName);
 
-    stdx::string path = "/ws";
+    stdx::string path;
+    if (exchangeName == "Polygon"){
+          path = "/options";
+    }
+    else {
+        path = "/ws";
+    }
     webSocket.handshake(cleanHost, path, ec);
+    cout << cleanHost << path;
 
     log::info("Successfully Connected to {} WebSocket!", exchangeName);
-
     connectionAlive = true;
-    sendSubscriptions();
+    authenticateAndSubscribe();
 }
 
+void WebSocketClient::authenticateAndSubscribe() {
+    static const stdx::unordered_map<stdx::string, stdx::function<stdx::string()>> authMessages = {
+        {"polygon", []() {
+            return nlohmann::json{{"action", "auth"}, {"params", "KfR2HSvoK32WIgpfMJRLHzgMHQb0oXpW"}}.dump();
+        }}
+    };
+
+    stdx::string exchangeLower = exchangeName;
+    stdx::transform(exchangeLower.begin(), exchangeLower.end(), exchangeLower.begin(), ::tolower);
+
+    auto it = authMessages.find(exchangeLower);
+    if (it != authMessages.end()) {
+        stdx::string authMessage = it->second();
+        sendMessage(authMessage);
+        log::info("🔑 Sent Authentication Request to {}", exchangeName);
+
+        // Wait for authentication response
+        stdx::string response = receiveMessage();
+        bool isAuthenticated = false;  // ✅ Ensure we subscribe only once
+
+        try {
+            nlohmann::json jsonData = nlohmann::json::parse(response);
+
+            // ✅ Handle array response properly
+            if (jsonData.is_array() && !jsonData.empty()) {
+                for (const auto& obj : jsonData) {
+                    if (obj.contains("status") && obj["status"] == "auth_success") {
+                        log::info("✅ Authentication Successful for {}", exchangeName);
+                        isAuthenticated = true;
+                        break;  // Exit loop on first success
+                    }
+                }
+            }
+
+            if (!isAuthenticated) {
+                log::warn("⚠️ No explicit 'auth_success' received, assuming authenticated.");
+                isAuthenticated = true;
+            }
+        } catch (const nlohmann::json::exception& e) {
+            log::warn("⚠️ Unexpected response format, assuming authentication success.");
+            isAuthenticated = true;  // Assume success on parsing error
+        }
+
+        if (isAuthenticated) {
+            sendSubscriptions();  // ✅ Ensure subscriptions happen only once
+        }
+    } else {
+        sendSubscriptions();  // If no authentication needed, directly subscribe
+    }
+}
 void WebSocketClient::sendSubscriptions() {
     static const stdx::unordered_map<stdx::string, stdx::function<stdx::string(const stdx::vector<stdx::string>&)>> subscriptionFormats = {
         {"binance", [](const stdx::vector<stdx::string>& symbols) {
@@ -100,6 +157,10 @@ void WebSocketClient::sendSubscriptions() {
         }},
         {"yahoo finance", [](const stdx::vector<stdx::string>& symbols) {
             return nlohmann::json{{"subscribe", symbols}}.dump();
+        }},
+             {"polygon", [](const stdx::vector<stdx::string>& symbols) {
+            return nlohmann::json{{"action", "subscribe"}, {"params", "AM.*"}}.dump();
+
         }},
         {"coinbase", [](const stdx::vector<stdx::string>& symbols) {
             nlohmann::json subJson;
@@ -175,24 +236,32 @@ void WebSocketClient::connectWithRetry() {
     log::error("WebSocket permanently failed for {}", exchangeName);
 }
 
-bool WebSocketClient::isAlive() {
-    return connectionAlive;
-}
-
 stdx::string WebSocketClient::receiveMessage() {
     try {
         beast::flat_buffer buffer;
-        webSocket.read(buffer);
+        webSocket.read(buffer);  // Read the incoming message
+
         stdx::string receivedData = beast::buffers_to_string(buffer.data());
+        cout << receivedData;
+        // Enable WebSocket auto fragmentation and large message support
+        webSocket.auto_fragment(true);
+        webSocket.binary(true);
+        webSocket.read_message_max(131072);  // Allow up to 64 KB per message
+
+        if (receivedData.empty()) {
+            log::warn("⚠️ Received empty message from {}", exchangeName);
+            return "";
+        }
 
         try {
             nlohmann::json jsonData = nlohmann::json::parse(receivedData);
 
             if (!jsonData.is_object() || jsonData.empty()) {
-                log::warn("Skipping invalid JSON: {}", receivedData);
+                log::warn("⚠️ Skipping invalid JSON: {}", receivedData);
                 return "";
             }
 
+            // Remove null values from JSON
             for (auto it = jsonData.begin(); it != jsonData.end();) {
                 if (it.value().is_null()) {
                     it = jsonData.erase(it);
@@ -201,24 +270,26 @@ stdx::string WebSocketClient::receiveMessage() {
                 }
             }
 
-            stdx::string validatedData = jsonData.dump();
+            stdx::string validatedData = jsonData.dump();`C
             kafkaProducer.sendToKafka(exchangeName, validatedData);
+            log::info("✅ Message successfully parsed and sent to Kafka from {}", exchangeName);
 
         } catch (const nlohmann::json::exception &e) {
-            log::error("JSON Parse Error: {} | Data: {}", e.what(), receivedData);
+            log::error("❌ JSON Parse Error: {} | Data: {}", e.what(), receivedData);
             return "";
         }
 
         connectionAlive = true;
         return receivedData;
 
-    } catch (const stdx::exception &e) {
-        log::error("WebSocket Read Error for {}: {}", exchangeName, e.what());
+    } catch (const beast::system_error &e) {
+        log::error("❌ WebSocket Read Error for {}: {}", exchangeName, e.what());
         connectionAlive = false;
         connectWithRetry();
         return "";
     }
 }
+
 // Sends periodic heartbeat messages to keep the connection alive
 void WebSocketClient::sendHeartbeat() {
     while (connectionAlive) {
@@ -234,4 +305,8 @@ void WebSocketClient::sendHeartbeat() {
 
 void WebSocketClient::sendMessage(const stdx::string &message) {
     webSocket.write(asio::buffer(message));
+}
+
+bool WebSocketClient::isAlive() {
+    return connectionAlive;
 }

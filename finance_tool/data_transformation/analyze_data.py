@@ -9,8 +9,10 @@ logger = logging.getLogger(__name__)
 def get_spark_session():
     return SparkSession.builder.appName("StockAnalysis").getOrCreate()
 
+
 def estimate_data_size(df):
     return df.shape[0] * df.shape[1] * 8 / 1e6
+
 
 def analyze_stock_data(df):
     data_size = estimate_data_size(df)

@@ -4,7 +4,8 @@ import datetime
 from typing import List
 from finance_tool.data_transformation.fetch_data import fetch_yahoo_data, fetch_polygon_data
 from finance_tool.data_transformation.analyze_data import analyze_stock_data
-from finance_tool.crud.exchange_models import YahooExchange
+from finance_tool.crud.exchange_models import YahooExchange, YahooExchangeResponse
+
 
 router = APIRouter(prefix="/stocks", tags=["Stock Processing"])
 logging.basicConfig(level=logging.INFO)
@@ -24,7 +25,7 @@ async def fetch_stock_data(tickers: List[str], source: str,  start: str, end: st
         raise HTTPException(status_code=400, detail="Invalid source. Use 'yahoo' or 'polygon'.")
 
 
-@router.get("/stocks/download")
+@router.get("/stocks/download", response_model=YahooExchangeResponse)
 async def download_stock_data(
     tickers: List[str] = Query(["AAPL"], title="Stock Tickers", description="Select one or more stock symbols", enum=AVAILABLE_TICKERS),
     source: str = Query("yahoo", title="Data Source", description="Select data source", enum=AVAILABLE_SOURCES),
@@ -39,7 +40,7 @@ async def download_stock_data(
     try:
         data = await fetch_stock_data(tickers, source, start, end)
 
-        stock_data = [
+        yahoo_data = [
             YahooExchange(
                 Date=data["Date"],
                 Ticker=data["Ticker"],
@@ -50,20 +51,20 @@ async def download_stock_data(
                 Volume=data["Volume"],
             ) for data in data.to_dicts()
         ]
-        return stock_data
+        return YahooExchangeResponse(yahoo_data=yahoo_data)
     except Exception as e:
         logger.error(f"Error fetching stock data: {e}")
         return {"error": str(e)}
 
 @router.get("/analyze")
 async def analyze_stocks(
-    source: str = Query(["AAPL"], description="Source: 'yahoo' or 'polygon'"),
-    tickers: list = Query("yahoo", description="Stock tickers (comma-separated)"),
-    start: str = Query("2024-01-01", description="Start date"),
-    end: str = Query("2024-12-31", description="End date")
+    tickers: List[str] = Query(["AAPL"], title="Stock Tickers", description="Select one or more stock symbols", enum=AVAILABLE_TICKERS),
+    source: str = Query("yahoo", title="Data Source", description="Select data source", enum=AVAILABLE_SOURCES),
+    start: datetime.date = Query(datetime.date.today() - datetime.timedelta(days=365), title="Start Date"),
+    end: datetime.date = Query(datetime.date.today(), title="End Date"),
 ):
     logger.info(f"Analyzing stock data for {tickers} from {source.upper()}")
 
-    df = await fetch_stock_data(source, tickers, start, end)
+    df = await fetch_stock_data(tickers, source, start, end)
     analysis = analyze_stock_data(df)
     return {"summary": analysis}
