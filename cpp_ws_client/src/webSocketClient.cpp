@@ -158,7 +158,7 @@ void WebSocketClient::sendSubscriptions() {
         {"yahoo finance", [](const stdx::vector<stdx::string>& symbols) {
             return nlohmann::json{{"subscribe", symbols}}.dump();
         }},
-             {"polygon", [](const stdx::vector<stdx::string>& symbols) {
+             {"polygon", [](const stdx::vector<stdx::string>) {
             return nlohmann::json{{"action", "subscribe"}, {"params", "AM.*"}}.dump();
 
         }},
@@ -270,7 +270,7 @@ stdx::string WebSocketClient::receiveMessage() {
                 }
             }
 
-            stdx::string validatedData = jsonData.dump();`C
+            stdx::string validatedData = jsonData.dump();
             kafkaProducer.sendToKafka(exchangeName, validatedData);
             log::info("✅ Message successfully parsed and sent to Kafka from {}", exchangeName);
 

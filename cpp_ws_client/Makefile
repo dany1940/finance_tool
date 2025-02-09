@@ -2,6 +2,8 @@
 CXX = clang++
 CXXFLAGS = -std=c++17 -stdlib=libc++ -Wall -Wextra -pthread
 
+
+
 # ✅ Fixed: Use Correct Boost and WebSocket++ Paths
 INCLUDE_PATHS = -Iinclude \
                 -I/usr/local/include \
@@ -16,16 +18,23 @@ INCLUDE_PATHS = -Iinclude \
 				-I/usr/local/Cellar/zeromq/4.3.2/include \
 				-I/usr/local/Cellar/librdkafka/2.8.0/include/librdkafka \
 				-I//usr/local/opt/fmt/include \
-				-I//Library/Developer/CommandLineTools/SDKs/MacOSX15.2.sdk/usr/include/c++/v1/iostream
+				-I//Library/Developer/CommandLineTools/SDKs/MacOSX15.2.sdk/usr/include/c++/v1/iostream \
+				-I/Users/FlorinDumitrascu/ngtcp2/include \
+                -I/Users/FlorinDumitrascu/nghttp3/include \
+                 -I/Users/FlorinDumitrascu/wolfssl/include \
 
 LIBRARY_PATHS = -L/usr/local/lib \
                 -L/usr/local/opt/boost/lib \
                 -L/usr/local/opt/jsoncpp/lib \
                 -L/usr/local/opt/librdkafka/lib \
 				-L/usr/local/opt/spdlog/lib \
-				-L/usr/local/Cellar/openssl@3/3.4.0/lib
+				-L/usr/local/Cellar/openssl@3/3.4.0/lib \
+				-L/Users/FlorinDumitrascu/ngtcp2/lib \
+                -L/Users/FlorinDumitrascu/nghttp3/lib \
+                -L/Users/FlorinDumitrascu/wolfssl/lib
 
-LIBS = -lssl -lcrypto -lboost_system -lboost_thread -ljsoncpp -lrdkafka -lpthread -lzmq -lspdlog -lfmt
+LIBS = -lssl -lcrypto -lboost_system -lboost_thread -ljsoncpp -lrdkafka -lpthread -lzmq -lspdlog -lfmt -lwolfssl -lngtcp2 -lnghttp3
+
 
 # Source Files
 # Directories

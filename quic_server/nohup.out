@@ -1,0 +1,15 @@
+Starting QUIC server on 127.0.0.1:4433...
+QUIC server running! Listening on 127.0.0.1:4433...
+Starting QUIC server with ngtcp2, nghttp3, and WolfSSL...
+WolfSSL initialized successfully.
+QUIC server running on UDP port 4433...
+Received 1200 bytes from client 127.0.0.1:52284
+Received 1200 bytes from client 127.0.0.1:52284
+Received 1200 bytes from client 127.0.0.1:52284
+Received 1200 bytes from client 127.0.0.1:52284
+Received 1200 bytes from client 127.0.0.1:52284
+Received 1200 bytes from client 127.0.0.1:52284
+Received 1200 bytes from client 127.0.0.1:64219
+Received 1200 bytes from client 127.0.0.1:64219
+Received 1200 bytes from client 127.0.0.1:64219
+Received 1200 bytes from client 127.0.0.1:64219
