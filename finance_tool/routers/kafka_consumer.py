@@ -2,12 +2,14 @@ import asyncio
 import json
 import logging
 from confluent_kafka import Consumer
+from fastapi import APIRouter
 from finance_tool.db import get_db
 from finance_tool.models import BinanceModel, CoinbaseModel
-from datetime import datetime
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/kafka", tags=["Kafka"]) # Define FastAPI router
 
 # Kafka Consumer Configuration
 consumer_conf = {
@@ -16,9 +18,8 @@ consumer_conf = {
     "auto.offset.reset": "earliest",
 }
 consumer = Consumer(consumer_conf)
-consumer.subscribe(["binance_ticker", "coinbase_ticker"])  # Subscribe to both topics
 
-shutdown_event = asyncio.Event()  # Shutdown event for graceful shutdown
+shutdown_event = asyncio.Event() # Shutdown event for graceful stop
 
 async def save_to_db(data: dict, db_session):
     """
@@ -91,20 +92,28 @@ async def consume_kafka_messages():
     except Exception as e:
         logger.error(f"❌ Kafka Consumer Error: {e}", exc_info=True)
     finally:
-        consumer.close()
+        logger.info("🛑 Stopping Kafka consumer and closing connection...")
+        consumer.close()  # Ensure Kafka connection is properly closed
+        shutdown_event.clear()  # Reset event for next restart
 
 
-def start_consumer():
-    """
-    Start Kafka consumer in a background task.
-    """
-    loop = asyncio.get_event_loop()
-    loop.create_task(consume_kafka_messages())
-    logger.info("🚀 Kafka Consumer Started!")
+@router.get("/start-consumer")
+async def start_kafka_consumer():
+    """Start Kafka consumer in a background task."""
+    if not shutdown_event.is_set():
+        shutdown_event.clear()  # Ensure event is reset before starting
+        loop = asyncio.get_event_loop()
+        loop.create_task(consume_kafka_messages())  # Run in background
+        logger.info("🚀 Kafka Consumer Started!")
+        return {"message": "Kafka consumer started!"}
+    else:
+        return {"message": "Kafka consumer is already running!"}
 
-def stop_consumer():
-    """
-    Stop Kafka consumer by setting the shutdown event.
-    """
-    shutdown_event.set()  # Trigger the shutdown event
+
+@router.get("/stop-consumer")
+async def stop_kafka_consumer():
+    """Stop Kafka consumer by triggering the shutdown event."""
+    shutdown_event.set()  # Signal shutdown
+    await asyncio.sleep(2)  # Give some time for loop to exit
     logger.info("⚠️ Kafka Consumer is stopping...")
+    return {"message": "Kafka consumer stopping..."}

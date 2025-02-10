@@ -1,87 +1,70 @@
-from fastapi import APIRouter
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import avg, max, min, stddev
-import yfinance as yf
-import pandas as pd
-
-# Initialize the router
-router = APIRouter()
-
-# Initialize the Spark session
-spark = SparkSession.builder \
-    .appName("SparkProcessor") \
-    .getOrCreate()
+from fastapi import APIRouter, Query, HTTPException
+import logging
+import datetime
+from typing import List
+from finance_tool.data_transformation.fetch_data import fetch_yahoo_data, fetch_polygon_data
+from finance_tool.data_transformation.analyze_data import analyze_stock_data
+from finance_tool.crud.exchange_models import YahooExchange, YahooExchangeResponse
 
 
-def fetch_historical_data(symbol: str, start_date: str, end_date: str):
+router = APIRouter(prefix="/stocks", tags=["Stock Processing"])
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Dropdown options
+AVAILABLE_TICKERS = ["AAPL", "TSLA", "MSFT", "GOOGL", "AMZN"]
+AVAILABLE_SOURCES = ["yahoo", "polygon"]
+
+
+async def fetch_stock_data(tickers: List[str], source: str,  start: str, end: str):
+    if source == "yahoo":
+        return await fetch_yahoo_data(tickers, start, end)
+    elif source == "polygon":
+        return await fetch_polygon_data(tickers, start, end)
+    else:
+        raise HTTPException(status_code=400, detail="Invalid source. Use 'yahoo' or 'polygon'.")
+
+
+@router.get("/stocks/download", response_model=YahooExchangeResponse)
+async def download_stock_data(
+    tickers: List[str] = Query(["AAPL"], title="Stock Tickers", description="Select one or more stock symbols", enum=AVAILABLE_TICKERS),
+    source: str = Query("yahoo", title="Data Source", description="Select data source", enum=AVAILABLE_SOURCES),
+    start: datetime.date = Query(datetime.date.today() - datetime.timedelta(days=365), title="Start Date"),
+    end: datetime.date = Query(datetime.date.today(), title="End Date"),
+):
     """
-    Fetch historical stock data from Yahoo Finance.
-    :param symbol: Stock ticker symbol (e.g., "AAPL").
-    :param start_date: Start date for the historical data (e.g., "2022-01-01").
-    :param end_date: End date for the historical data (e.g., "2023-01-01").
-    :return: A Pandas DataFrame containing the historical stock data.
+    Downloads stock data based on timeframe, tickers, and source.
+    Returns JSON serialized data.
     """
-    ticker = yf.Ticker(symbol)
-    data = ticker.history(start=start_date, end=end_date, interval="1d")
-    if not data.empty:
-        return data.reset_index() # Reset index to make it Spark-compatible
-    return pd.DataFrame() # Return empty DataFrame if no data is available
 
+    try:
+        data = await fetch_stock_data(tickers, source, start, end)
 
-@router.post("/historical")
-def analyze_historical_data(symbol: str, start_date: str, end_date: str):
-    """
-    Analyze historical stock data using Spark.
-    :param symbol: Stock ticker symbol.
-    :param start_date: Start date for historical data.
-    :param end_date: End date for historical data.
-    :return: Analysis results.
-    """
-    # Fetch historical data from Yahoo Finance
-    historical_data = fetch_historical_data(symbol, start_date, end_date)
+        yahoo_data = [
+            YahooExchange(
+                Date=data["Date"],
+                Ticker=data["Ticker"],
+                Open=data["Open"],
+                High=data["High"],
+                Low=data["Low"],
+                Close=data["Close"],
+                Volume=data["Volume"],
+            ) for data in data.to_dicts()
+        ]
+        return YahooExchangeResponse(yahoo_data=yahoo_data)
+    except Exception as e:
+        logger.error(f"Error fetching stock data: {e}")
+        return {"error": str(e)}
 
-    if historical_data.empty:
-        return {"error": f"No data found for {symbol} between {start_date} and {end_date}"}
+@router.get("/analyze")
+async def analyze_stocks(
+    tickers: List[str] = Query(["AAPL"], title="Stock Tickers", description="Select one or more stock symbols", enum=AVAILABLE_TICKERS),
+    source: str = Query("yahoo", title="Data Source", description="Select data source", enum=AVAILABLE_SOURCES),
+    start: datetime.date = Query(datetime.date.today() - datetime.timedelta(days=365), title="Start Date"),
+    end: datetime.date = Query(datetime.date.today(), title="End Date"),
+):
+    logger.info(f"Analyzing stock data for {tickers} from {source.upper()}")
 
-    # Convert Pandas DataFrame to Spark DataFrame
-    df = spark.createDataFrame(historical_data)
-
-    # Perform analysis on the Spark DataFrame
-    analysis = df.selectExpr(
-        "avg(Close) as average_close",
-        "max(Close) as max_close",
-        "min(Close) as min_close",
-        "stddev(Close) as volatility"
-    ).collect()
-
-    # Convert the results to a Python dictionary
-    results = {row.asDict().keys()[0]: row.asDict() for row in analysis}
-
-    return {"symbol": symbol, "analysis": results}
-
-
-@router.post("/process-realtime")
-def process_realtime_data(kafka_messages: list):
-    """
-    Process real-time data consumed from Kafka using Spark.
-    :param kafka_messages: List of messages fetched from Kafka.
-    :return: Processed analysis results.
-    """
-    if not kafka_messages:
-        return {"error": "No real-time data to process"}
-
-    # Convert Kafka messages (list of dictionaries) to a Spark DataFrame
-    df = spark.createDataFrame(kafka_messages)
-
-    # Perform analysis (e.g., average, max, min prices)
-    analysis = df.groupBy("symbol").agg(
-        avg("close").alias("average_close"),
-        max("close").alias("max_close"),
-        min("close").alias("min_close"),
-        stddev("close").alias("volatility")
-    ).collect()
-
-    # Convert the results to a Python dictionary
-    results = [row.asDict() for row in analysis]
-
-    return {"realtime_analysis": results}
+    df = await fetch_stock_data(tickers, source, start, end)
+    analysis = analyze_stock_data(df)
+    return {"summary": analysis}

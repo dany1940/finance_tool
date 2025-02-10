@@ -35,6 +35,10 @@ public:
     void close();               // Close WebSocket connection
     void sendSubscriptions();   // Subscribe to stock symbols
     string getStockList();      // Get subscribed stocks
+    void authenticateAndSubscribe(); //authentificate exchanges
+    void forwardToClients(const string& data); // forward data to a lust of clients
+
+
 
 private:
     IoContext::io_context ioc;  // Boost ASIO IO context
@@ -44,7 +48,7 @@ private:
     string serverUrl;
     vector<string> stockSymbols;
     bool connectionAlive;
-    ZMQKafkaProducer &kafkaProducer;  // Reference to Kafka producer
+    ZMQKafkaProducer &kafkaProducer;  // Reference to Kafka produce
 };
 
 #endif  // WEBSOCKET_CLIENT_H
