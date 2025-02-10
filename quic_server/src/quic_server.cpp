@@ -1,8 +1,4 @@
 
-Dumitrascu Florin <gsecomerce@gmail.com>
-12:22 (acum 0 minute)
-către eu
-
 #include <iostream>
 #include <cstring>
 #include <unistd.h>
@@ -79,29 +75,29 @@ int main() {
     // Load server certificates (self-signed certificates if needed)
     if (generateCert() != 0) {
         std::cerr << "Failed to generate certificates!" << std::endl;
-        return 1;
+        return -1;
     }
 
-    // Initialize wolfSSL
+    // Initialize wofSSL
     wolfSSL_Init();
 
     // Create QUIC context for QUIC-specific connection handling (TLS 1.3 for QUIC)
     ctx = wolfSSL_CTX_new(wolfSSLv23_server_method());  // wolfSSLv23 supports TLS 1.3
     if (!ctx) {
         std::cerr << "wolfSSL context initialization failed!" << std::endl;
-        return 1;
+        return -1;
     }
 
     // Load certificate and private key for encryption
     if (wolfSSL_CTX_use_certificate_file(ctx, "certificates/server.crt", SSL_FILETYPE_PEM) != WOLFSSL_SUCCESS ||
         wolfSSL_CTX_use_PrivateKey_file(ctx, "certificates/server.key", SSL_FILETYPE_PEM) != WOLFSSL_SUCCESS) {
         std::cerr << "Failed to load certificate or private key!" << std::endl;
-        return 1;
+        return -1;
     }
 
     int sock;
     if (!initialize_quic_server(sock)) {
-        return 1;
+        return -1;
     }
 
     std::cout << "QUIC HTTP/3 server running on UDP 0.0.0.0:" << PORT << "..." << std::endl;
