@@ -2,7 +2,7 @@
 #include "utils.h"
 #include <cmath>
 
-double blackScholesPrice(double S, double K, double T, double r, double sigma, bool isCall) {
+double blackScholes(double S, double K, double T, double r, double sigma, bool isCall) {
     double d1 = (std::log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * std::sqrt(T));
     double d2 = d1 - sigma * std::sqrt(T);
 
