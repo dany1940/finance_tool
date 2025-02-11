@@ -5,3 +5,6 @@
 
 double normalCDF(double x);
 double normalPDF(double x);
+
+
+#endif
