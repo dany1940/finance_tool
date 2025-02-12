@@ -3,7 +3,7 @@ import pybind11
 
 ext_modules = [
     Extension(
-        "financial_models",
+        "financial_models/src",
         ["financial_models_wrapper.cpp"],
         include_dirs=[pybind11.get_include(), "include"],
         language="c++"

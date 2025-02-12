@@ -271,8 +271,8 @@ stdx::string WebSocketClient::receiveMessage() {
             }
 
             stdx::string validatedData = jsonData.dump();
-            kafkaProducer.sendToKafka(exchangeName, validatedData);
-            log::info("✅ Message successfully parsed and sent to Kafka from {}", exchangeName);
+            //kafkaProducer.sendToKafka(exchangeName, validatedData);
+            //log::info("✅ Message successfully parsed and sent to Kafka from {}", exchangeName);
 
         } catch (const nlohmann::json::exception &e) {
             log::error("❌ JSON Parse Error: {} | Data: {}", e.what(), receivedData);

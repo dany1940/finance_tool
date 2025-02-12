@@ -1,30 +1,26 @@
 #include "monte_carlo.h"
 #include <random>
-#include <cmath>
 
 double monteCarloBlackScholes(double S, double K, double T, double r, double sigma, bool is_call, int numSimulations) {
-    if (numSimulations <= 0) {
-        return 0.0; // Ensure valid input
-    }
+    logMessage("Monte Carlo simulation started.");
 
-    std::random_device rd;
-    std::mt19937 generator(rd());
-    std::normal_distribution<double> distribution(0.0, 1.0);
+    random_device rd;
+    mt19937 gen(rd());
+    normal_distribution<double> dist(0.0, 1.0);
 
-    double totalPayoff = 0.0;
+    double sumPayoff = 0.0;
+    double discountFactor = exp(-r * T);
+
+    #pragma omp parallel for reduction(+:sumPayoff)
     for (int i = 0; i < numSimulations; i++) {
-        double Z = distribution(generator);
-        double ST = S * exp((r - 0.5 * sigma * sigma) * T + sigma * sqrt(T) * Z);
-
-        double payoff = is_call ? std::max(ST - K, 0.0) : std::max(K - ST, 0.0);
-        totalPayoff += payoff;
+        double epsilon = dist(gen);
+        double ST = S * exp((r - 0.5 * sigma * sigma) * T + sigma * sqrt(T) * epsilon);
+        double payoff = is_call ? max(ST - K, 0.0) : max(K - ST, 0.0);
+        sumPayoff += payoff;
     }
 
-    double result = exp(-r * T) * (totalPayoff / numSimulations);
-
-    if (std::isnan(result) || result < 0.0) {
-        return 0.0; // Handle NaN cases safely
-    }
-
-    return result;
+    double price = discountFactor * (sumPayoff / numSimulations);
+    logMessage("Monte Carlo simulation completed.");
+    return price;
 }
+

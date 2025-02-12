@@ -1,14 +1,21 @@
 #include "black_scholes.h"
-#include "utils.h"
-#include <cmath>
 
-double blackScholes(double S, double K, double T, double r, double sigma, bool isCall) {
-    double d1 = (std::log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * std::sqrt(T));
-    double d2 = d1 - sigma * std::sqrt(T);
+double blackScholes(double S, double K, double T, double r, double sigma, bool is_call) {
+    logMessage("Black-Scholes calculation started.");
 
-    if (isCall) {
-        return S * normalCDF(d1) - K * std::exp(-r * T) * normalCDF(d2);
+    double d1 = (log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * sqrt(T));
+    double d2 = d1 - sigma * sqrt(T);
+
+    double Nd1 = normalCDF(d1);
+    double Nd2 = normalCDF(d2);
+
+    double result;
+    if (is_call) {
+        result = S * Nd1 - K * exp(-r * T) * Nd2;
     } else {
-        return K * std::exp(-r * T) * normalCDF(-d2) - S * normalCDF(-d1);
+        result = K * exp(-r * T) * (1 - Nd2) - S * (1 - Nd1);
     }
+
+    logMessage("Black-Scholes calculation completed.");
+    return result;
 }

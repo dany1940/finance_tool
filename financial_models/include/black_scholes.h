@@ -1,7 +1,11 @@
-
 #ifndef BLACK_SCHOLES_H
 #define BLACK_SCHOLES_H
 
-double blackScholes(double S, double K, double T, double r, double sigma, bool isCall);
+#include "utils.h"
+#include <omp.h>
 
-#endif
+using namespace std;
+
+double blackScholes(double S, double K, double T, double r, double sigma, bool is_call);
+
+#endif // BLACK_SCHOLES_H

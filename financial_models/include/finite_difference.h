@@ -1,6 +1,12 @@
 #ifndef FINITE_DIFFERENCE_H
 #define FINITE_DIFFERENCE_H
 
-double finiteDifferenceBlackScholes(double S, double K, double T, double r, double sigma, bool isCall, int N, int M);
+#include "utils.h"
+#include <vector>
+#include <omp.h>
 
-#endif
+using namespace std;
+
+double finiteDifferenceBlackScholes(double S, double K, double T, double r, double sigma, bool is_call, int gridSize, int timeSteps);
+
+#endif // FINITE_DIFFERENCE_H

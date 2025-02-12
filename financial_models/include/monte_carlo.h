@@ -1,6 +1,12 @@
 #ifndef MONTE_CARLO_H
 #define MONTE_CARLO_H
 
-double monteCarloBlackScholes(double S, double K, double T, double r, double sigma, bool isCall, int numSimulations);
+#include "utils.h"
+#include <omp.h>
+#include <vector>
 
-#endif
+using namespace std;
+
+double monteCarloBlackScholes(double S, double K, double T, double r, double sigma, bool is_call, int numSimulations);
+
+#endif // MONTE_CARLO_H
