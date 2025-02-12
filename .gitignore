@@ -1,0 +1,38 @@
+# Build artifacts
+financial_models/build/
+financial_models/*.so
+financial_models/*.o
+quic_server/build/
+quic_server/bin/
+cpp_ws_client/build/
+cpp_ws_client/bin/
+
+# Python bytecode
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+
+# Poetry virtual environments
+finance_tool/.venv/
+financial_tools/.venv/
+poetry.lock
+
+# Logs and debug output
+*.log
+nohup.out
+server.log
+
+# macOS and IDE files
+.DS_Store
+.AppleDouble
+.LSOverride
+.vscode/
+.idea/
+
+# C++ compiled output
+*.o
+*.so
+*.a
+*.out
+*.exe
