@@ -1,31 +1,39 @@
 #include "finite_difference.h"
+#include "utils.h"
+#include <vector>
+#include <cmath>
+#include <iostream>
 
-double finiteDifferenceBlackScholes(double S, double K, double T, double r, double sigma, bool is_call, int gridSize, int timeSteps) {
+using namespace std;
+
+double finiteDifferenceBlackScholes(double S, double K, double T, double r, double sigma, bool isCall, int gridSize, int timeSteps) {
+    if (gridSize <= 0 || timeSteps <= 0 || T <= 0 || sigma <= 0 || S <= 0 || K <= 0) {
+        cerr << "[ERROR] Invalid input parameters in Finite Difference.\n";
+        return 0.0;
+    }
+
     logMessage("Finite Difference Method started.");
 
-    vector<vector<double>> grid(gridSize + 1, vector<double>(timeSteps + 1, 0.0));
     double dt = T / timeSteps;
-    double dx = (2.0 * sigma * sqrt(dt));
+    double dx = sigma * sqrt(3 * dt);
+    double pu = 0.5 * ((sigma * sigma * dt) / (dx * dx) + (r * dt) / dx);
+    double pm = 1.0 - (sigma * sigma * dt) / (dx * dx) - r * dt;
+    double pd = 0.5 * ((sigma * sigma * dt) / (dx * dx) - (r * dt) / dx);
 
-    vector<double> stockPrice(gridSize + 1);
-    for (int i = 0; i <= gridSize; i++) {
-        stockPrice[i] = S * exp((i - gridSize / 2) * dx);
+    vector<double> values(gridSize + 1);
+    for (int i = 0; i <= gridSize; ++i) {
+        double stockPrice = S * exp((i - gridSize / 2) * dx);
+        values[i] = isCall ? max(stockPrice - K, 0.0) : max(K - stockPrice, 0.0);
     }
 
-    for (int i = 0; i <= gridSize; i++) {
-        grid[i][timeSteps] = is_call ? max(stockPrice[i] - K, 0.0) : max(K - stockPrice[i], 0.0);
-    }
-
-    for (int t = timeSteps - 1; t >= 0; t--) {
-        #pragma omp parallel for
-        for (int i = 1; i < gridSize; i++) {
-            double delta = (grid[i + 1][t + 1] - grid[i - 1][t + 1]) / (2.0 * dx);
-            double gamma = (grid[i + 1][t + 1] - 2.0 * grid[i][t + 1] + grid[i - 1][t + 1]) / (dx * dx);
-            double theta = -0.5 * sigma * sigma * stockPrice[i] * stockPrice[i] * gamma - r * stockPrice[i] * delta + r * grid[i][t + 1];
-            grid[i][t] = grid[i][t + 1] - dt * theta;
+    for (int t = timeSteps - 1; t >= 0; --t) {
+        vector<double> newValues(gridSize + 1);
+        for (int i = 1; i < gridSize; ++i) {
+            newValues[i] = pu * values[i + 1] + pm * values[i] + pd * values[i - 1];
         }
+        values.swap(newValues);
     }
 
     logMessage("Finite Difference Method completed.");
-    return grid[gridSize / 2][0];
+    return max(values[gridSize / 2], 0.0);
 }
