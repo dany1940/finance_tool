@@ -1,5 +1,5 @@
 # tests/test_main.py
-from finance_tool.main import add
+from financial_models.main import add
 
 
 def test_add():
