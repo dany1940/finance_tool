@@ -11,9 +11,9 @@ namespace DataSources {
     // Common map for both WebSockets & QUIC, including ticker symbols
     const map<string, pair<string, vector<string>>> dataSources = {
         //{"Yahoo Finance", {"wss://streamer.finance.yahoo.com", {"AAPL"}}},
-        //{"Binance", {"wss://stream.binance.com", {"btcusdt@trade"}}},
+        {"Binance", {"wss://stream.binance.com", {"btcusdt@trade"}}},
         //{"Coinbase", {"wss://ws-feed.exchange.coinbase.com", {"BTC-USD"}}},
-        {"Polygon", {"wss://delayed.polygon.io", {"options"}}},
+        //{"Polygon", {"wss://delayed.polygon.io", {"options"}}},
     };
 }
 

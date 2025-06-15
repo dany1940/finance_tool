@@ -34,10 +34,10 @@ void WebSocketClient::connect() {
     ip::tcp::resolver resolver(ioc);
     syst::error_code ec;
     stdx::map<stdx::string, stdx::string> portMapping = {
-        {"Yahoo Finance", "443"},
+        //{"Yahoo Finance", "443"},
         {"Binance", "9443"},
-        {"Coinbase", "443"},
-        {"Polygon",  "443"}
+        //{"Coinbase", "443"},
+        //{"Polygon",  "443"}
     };
 
     stdx::string chosenPort = portMapping[exchangeName];
