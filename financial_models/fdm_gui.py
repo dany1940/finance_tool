@@ -1,7 +1,8 @@
-# fdm_gui.py
-
 from nicegui import ui, page
-import json, os, httpx, asyncio
+import os
+import json
+import httpx
+import asyncio
 import polars as pl
 import plotly.graph_objs as go
 
@@ -9,86 +10,112 @@ import plotly.graph_objs as go
 state = {}
 latest_result = []
 
-# === Setup for download path ===
+# === Setup download directory ===
 DOWNLOAD_PATH = 'downloads'
 os.makedirs(DOWNLOAD_PATH, exist_ok=True)
 
-# === Set page title (fixes AppConfig.title crash) ===
+# === Page Configuration ===
 page.title = "FDM Calculator"
+ui.dark_mode().enable()  # Force dark theme
 
-# === GUI Layout ===
-ui.markdown("# 📊 Advanced FDM Financial Tool")
+# === Main Container ===
+with ui.column().classes("w-full bg-gray-900 text-white p-4"):
 
-method = ui.select(
-    ['explicit', 'implicit', 'crank', 'american', 'fractional', 'exponential', 'compact'],
-    label='Finite Difference Method',
-    value='explicit'
-).classes('w-80')
+    ui.markdown("## 🎓 Finite Difference Method Option Pricing Tool").classes("text-white text-2xl mb-4")
 
-# === Input Fields ===
-with ui.row():
-    N = ui.number('N (Grid steps)', value=10).props('step=1')
-    M = ui.number('M (Time steps)', value=10).props('step=1')
-    Smax = ui.number('Smax', value=100)
-    T = ui.number('T (Maturity)', value=1.0)
+    with ui.row().classes("w-full justify-between"):
 
-with ui.row():
-    K = ui.number('K (Strike)', value=50)
-    r = ui.number('r (Interest rate)', value=0.05)
-    sigma = ui.number('σ (Volatility)', value=0.2)
-    is_call = ui.checkbox('Call Option', value=True)
+        # === Method & Market Parameters ===
+        with ui.column().classes("w-2/3"):
+            ui.markdown("### Method & Market Parameters").classes("text-white text-xl")
+            method = ui.select(
+                ['explicit', 'implicit', 'crank', 'american', 'fractional', 'exponential', 'compact'],
+                label='Finite Difference Method',
+                value='explicit'
+            ).classes('w-80 text-white')
 
-with ui.row():
-    omega = ui.number('ω (Relaxation)', value=1.2)
-    max_iter = ui.number('Max Iter', value=10000).props('step=100')
-    tol = ui.number('Tolerance', value=1e-6)
+            with ui.row().classes("gap-4 flex-wrap"):
+                N = ui.number('N (Grid steps)', value=10).props('step=1')
+                M = ui.number('M (Time steps)', value=10).props('step=1')
+                Smax = ui.number('Smax', value=100)
+                T = ui.number('T (Maturity)', value=1.0)
 
-with ui.row():
-    beta = ui.number('β (Fractional time)', value=0.8)
-    dx = ui.number('dx (Compact dx)', value=1.0)
+            with ui.row().classes("gap-4 flex-wrap"):
+                K = ui.number('K (Strike)', value=50)
+                r = ui.number('r (Interest rate)', value=0.05)
+                sigma = ui.number('σ (Volatility)', value=0.2)
+                is_call = ui.toggle({True: 'Call', False: 'Put'}, value=True).props('inline')
+                option_type = ui.select(['European', 'American'], label='Option Style', value='European').classes('w-64')
 
-vector_input = ui.textarea('V (for compact)', value='[1, 2, 3, 4, 5, 6]').classes('w-full')
+        # === Output Table on Right Side ===
+        with ui.column().classes("w-1/3 items-end"):
+            ui.markdown("### Output Table").classes("text-white text-lg")
+            output_table = ui.table(
+                columns=[
+                    {'name': 'Index', 'label': 'Index', 'field': 'Index'},
+                    {'name': 'Value', 'label': 'Value', 'field': 'Value'}
+                ],
+                rows=[]
+            ).classes('w-full max-h-96 text-white')
 
-with ui.row():
-    ticker = ui.input('Stock Ticker (optional)').classes('w-64')
-    date = ui.date('Start Date').classes('w-64')
+    # === Advanced Parameters ===
+    with ui.expansion("Advanced Parameters", value=True).classes("w-2/3 mt-6"):
+        with ui.row().classes("gap-4 flex-wrap"):
+            omega = ui.number('ω (Relaxation)', value=1.2)
+            max_iter = ui.number('Max Iter', value=10000).props('step=100')
+            tol = ui.number('Tolerance', value=1e-6)
 
-# === Plot Area ===
-fig2d = go.Figure()
-fig3d = go.Figure()
-plot2d = ui.plotly(fig2d).classes('w-full h-96')
-plot3d = ui.plotly(fig3d).classes('w-full h-96')
+        with ui.row().classes("gap-4 flex-wrap"):
+            beta = ui.number('β (Fractional time)', value=0.8)
+            dx = ui.number('dx (Compact dx)', value=1.0)
 
-# === Table Output ===
-output_table = ui.table(columns=[
-    {'name': 'Index', 'label': 'Index', 'field': 'Index'},
-    {'name': 'Value', 'label': 'Value', 'field': 'Value'}
-], rows=[]).classes('w-full')
+        vector_input = ui.textarea('V (for compact)', value='[1, 2, 3, 4, 5, 6]').classes('w-full')
 
-# === Helper Functions ===
+        with ui.row().classes("gap-4 flex-wrap"):
+            ticker = ui.input('Stock Ticker (optional)').classes('w-64')
+            date = ui.date('Start Date').classes('w-64')
+
+        # Final Price
+        final_price = ui.label("").classes("text-green-400 text-xl")
+
+        # Buttons aligned
+        with ui.row().classes("gap-4 mt-4"):
+            ui.button("Run FDM Solver", on_click=lambda: asyncio.create_task(compute_fdm()), color="blue")
+            ui.button("Show 2D Plot", on_click=lambda: popup2d.open()).props("outline")
+            ui.button("Show 3D Plot", on_click=lambda: popup3d.open()).props("outline")
+
+# === Plot Modals ===
+with ui.dialog() as popup2d, ui.card().classes("bg-gray-900"):
+    popup2d_plot = ui.plotly(go.Figure()).classes('w-160 h-96')
+    ui.button("Close", on_click=popup2d.close)
+
+with ui.dialog() as popup3d, ui.card().classes("bg-gray-900"):
+    popup3d_plot = ui.plotly(go.Figure()).classes('w-160 h-96')
+    ui.button("Close", on_click=popup3d.close)
+
+# === Helpers ===
 def save_to_csv():
     df = pl.DataFrame(latest_result)
     path = os.path.join(DOWNLOAD_PATH, 'fdm_result.csv')
     df.write_csv(path)
-    return '/downloads/fdm_result.csv'
+    return path
 
 def save_to_excel():
     df = pl.DataFrame(latest_result)
     path = os.path.join(DOWNLOAD_PATH, 'fdm_result.xlsx')
     df.write_excel(path)
-    return '/downloads/fdm_result.xlsx'
+    return path
 
-# === Async Computation ===
+def save_plot(fig, filename):
+    fig.write_image(filename)
+    return filename
+
+# === Backend Compute ===
 async def compute_fdm():
     params = {
-        "N": N.value,
-        "M": M.value,
-        "Smax": Smax.value,
-        "T": T.value,
-        "K": K.value,
-        "r": r.value,
-        "sigma": sigma.value,
-        "is_call": is_call.value,
+        "N": N.value, "M": M.value, "Smax": Smax.value, "T": T.value,
+        "K": K.value, "r": r.value, "sigma": sigma.value,
+        "is_call": is_call.value, "option_style": option_type.value
     }
 
     if method.value == 'american':
@@ -116,28 +143,20 @@ async def compute_fdm():
     latest_result.clear()
     latest_result.extend([{"Index": i, "Value": v} for i, v in enumerate(result)])
     output_table.rows = latest_result
+    final_price.text = f"Final Price: {result[-1]:.4f}" if result else "No result."
 
-    plot2d.figure = go.Figure(data=[go.Scatter(
+    fig2d = go.Figure(data=[go.Scatter(
         x=[x["Index"] for x in latest_result],
         y=[x["Value"] for x in latest_result],
         mode="lines"
     )])
-    plot3d.figure = go.Figure(data=[go.Scatter3d(
+
+    fig3d = go.Figure(data=[go.Scatter3d(
         x=[x["Index"] for x in latest_result],
         y=[K.value] * len(latest_result),
         z=[x["Value"] for x in latest_result],
         mode="lines"
     )])
 
-    state['download_link_csv'].target = save_to_csv()
-    state['download_link_excel'].target = save_to_excel()
-    state['download_link_csv'].visible = True
-    state['download_link_excel'].visible = True
-
-# === Buttons & Download Links ===
-with ui.row():
-    ui.button("Run FDM Solver", on_click=lambda: asyncio.create_task(compute_fdm()), color="primary")
-
-with ui.row():
-    state['download_link_csv'] = ui.link("⬇️ Download CSV", target="", new_tab=True).classes("text-blue-600").bind_visibility_from(False)
-    state['download_link_excel'] = ui.link("⬇️ Download Excel", target="", new_tab=True).classes("text-green-600").bind_visibility_from(False)
+    popup2d_plot.figure = fig2d
+    popup3d_plot.figure = fig3d
