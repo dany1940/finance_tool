@@ -437,3 +437,167 @@ std::vector<double> fdm_crank_nicolson_vector(int N, int M, double Smax, double 
     }
     return V;
 }
+
+// Assumes solve_tridiagonal is already implemented elsewhere
+
+// ==============================
+// === Explicit FDM Surface ====
+// ==============================
+std::vector<std::vector<double>> fdm_explicit_surface(
+    int N, int M, double Smax, double T, double K,
+    double r, double sigma, bool is_call) {
+
+    double dS = Smax / N;
+    double dt = T / M;
+
+    std::vector<std::vector<double>> surface;
+    std::vector<double> V(N + 1);
+
+    // Initial condition
+    for (int i = 0; i <= N; ++i) {
+        double S = i * dS;
+        V[i] = is_call ? std::max(S - K, 0.0) : std::max(K - S, 0.0);
+    }
+    surface.push_back(V);
+
+    // Time stepping
+    for (int t = 1; t <= M; ++t) {
+        std::vector<double> Vnew(N + 1);
+        double tau = t * dt;
+
+        Vnew[0] = is_call ? 0.0 : K * std::exp(-r * (T - tau));
+        Vnew[N] = is_call ? (Smax - K * std::exp(-r * (T - tau))) : 0.0;
+
+        for (int i = 1; i < N; ++i) {
+            double j = static_cast<double>(i);
+            double a = 0.5 * dt * (sigma * sigma * j * j - r * j);
+            double b = 1 - dt * (sigma * sigma * j * j + r);
+            double c = 0.5 * dt * (sigma * sigma * j * j + r * j);
+            Vnew[i] = a * V[i - 1] + b * V[i] + c * V[i + 1];
+        }
+
+        surface.push_back(Vnew);
+        V = Vnew;
+    }
+
+    return surface;
+}
+
+// ==============================
+// === Implicit FDM Surface ====
+// ==============================
+std::vector<std::vector<double>> fdm_implicit_surface(
+    int N, int M, double Smax, double T, double K,
+    double r, double sigma, bool is_call) {
+
+    double dS = Smax / N;
+    double dt = T / M;
+
+    std::vector<std::vector<double>> surface;
+    std::vector<double> V(N + 1);
+
+    // Initial condition
+    for (int i = 0; i <= N; ++i) {
+        double S = i * dS;
+        V[i] = is_call ? std::max(S - K, 0.0) : std::max(K - S, 0.0);
+    }
+    surface.push_back(V);
+
+    // Coefficients
+    std::vector<double> a(N - 1), b(N - 1), c(N - 1);
+    for (int i = 1; i < N; ++i) {
+        double j = static_cast<double>(i);
+        a[i - 1] = -0.5 * dt * (sigma * sigma * j * j - r * j);
+        b[i - 1] = 1 + dt * (sigma * sigma * j * j + r);
+        c[i - 1] = -0.5 * dt * (sigma * sigma * j * j + r * j);
+    }
+
+    for (int t = 1; t <= M; ++t) {
+        std::vector<double> d(N - 1);
+        for (int i = 1; i < N; ++i) {
+            d[i - 1] = V[i];
+        }
+
+        // Boundary adjustments
+        d[0]   -= a[0] * (is_call ? 0.0 : K * std::exp(-r * dt * t));
+        d[N-2] -= c[N-2] * (is_call ? (Smax - K * std::exp(-r * dt * t)) : 0.0);
+
+        std::vector<double> Vnew_inner = solve_tridiagonal(a, b, c, d);
+
+        std::vector<double> Vnew(N + 1);
+        Vnew[0] = is_call ? 0.0 : K * std::exp(-r * dt * t);
+        Vnew[N] = is_call ? (Smax - K * std::exp(-r * dt * t)) : 0.0;
+
+        for (int i = 1; i < N; ++i) {
+            Vnew[i] = Vnew_inner[i - 1];
+        }
+
+        surface.push_back(Vnew);
+        V = Vnew;
+    }
+
+    return surface;
+}
+
+// ==========================================
+// === Crank-Nicolson FDM Surface ==========
+// ==========================================
+std::vector<std::vector<double>> fdm_crank_nicolson_surface(
+    int N, int M, double Smax, double T, double K,
+    double r, double sigma, bool is_call, bool rannacher_smoothing) {
+
+    double dS = Smax / N;
+    double dt = T / M;
+
+    std::vector<std::vector<double>> surface;
+    std::vector<double> V(N + 1);
+
+    // Initial condition
+    for (int i = 0; i <= N; ++i) {
+        double S = i * dS;
+        V[i] = is_call ? std::max(S - K, 0.0) : std::max(K - S, 0.0);
+    }
+    surface.push_back(V);
+
+    // Coefficients
+    std::vector<double> a(N - 1), b(N - 1), c(N - 1);
+    std::vector<double> alpha(N - 1), beta(N - 1), gamma(N - 1);
+
+    for (int i = 1; i < N; ++i) {
+        double j = static_cast<double>(i);
+        double sigma2j2 = sigma * sigma * j * j;
+        double rj = r * j;
+
+        a[i - 1] = -0.25 * dt * (sigma2j2 - rj);
+        b[i - 1] = 1 + 0.5 * dt * (sigma2j2 + r);
+        c[i - 1] = -0.25 * dt * (sigma2j2 + rj);
+
+        alpha[i - 1] = 0.25 * dt * (sigma2j2 - rj);
+        beta[i - 1]  = 1 - 0.5 * dt * (sigma2j2 + r);
+        gamma[i - 1] = 0.25 * dt * (sigma2j2 + rj);
+    }
+
+    for (int t = 1; t <= M; ++t) {
+        std::vector<double> d(N - 1);
+        for (int i = 1; i < N; ++i) {
+            d[i - 1] = alpha[i - 1] * V[i - 1] + beta[i - 1] * V[i] + gamma[i - 1] * V[i + 1];
+        }
+
+        d[0]   += a[0] * (is_call ? 0.0 : K * std::exp(-r * dt * t));
+        d[N-2] += c[N-2] * (is_call ? (Smax - K * std::exp(-r * dt * t)) : 0.0);
+
+        std::vector<double> Vnew_inner = solve_tridiagonal(a, b, c, d);
+        std::vector<double> Vnew(N + 1);
+        Vnew[0] = is_call ? 0.0 : K * std::exp(-r * dt * t);
+        Vnew[N] = is_call ? (Smax - K * std::exp(-r * dt * t)) : 0.0;
+
+        for (int i = 1; i < N; ++i) {
+            Vnew[i] = Vnew_inner[i - 1];
+        }
+
+        surface.push_back(Vnew);
+        V = Vnew;
+    }
+
+    return surface;
+}

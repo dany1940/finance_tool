@@ -7,7 +7,6 @@ import pyarrow as pa
 import pandas as pd
 from data_transformation.cache_manager import get_cached_data, cache_data
 from fastapi import HTTPException
-from datetime import datetime
 
 
 

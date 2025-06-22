@@ -101,6 +101,21 @@ PYBIND11_MODULE(financial_models_wrapper, m) {
           "Interpolate option price at spot S0",
           py::arg("V"), py::arg("S"), py::arg("S0"));
 
+    m.def("fdm_explicit_surface", &fdm_explicit_surface,
+      "Explicit Finite Difference method returning 2D surface (time vs. space)",
+      py::arg("N"), py::arg("M"), py::arg("Smax"), py::arg("T"),
+      py::arg("K"), py::arg("r"), py::arg("sigma"), py::arg("is_call"));
+
+    m.def("fdm_implicit_surface", &fdm_implicit_surface,
+      "Implicit Finite Difference method returning 2D surface (time vs. space)",
+      py::arg("N"), py::arg("M"), py::arg("Smax"), py::arg("T"),
+      py::arg("K"), py::arg("r"), py::arg("sigma"), py::arg("is_call"));
+
+   m.def("fdm_crank_nicolson_surface", &fdm_crank_nicolson_surface,
+      "Crank-Nicolson Finite Difference method returning 2D surface (time vs. space)",
+      py::arg("N"), py::arg("M"), py::arg("Smax"), py::arg("T"),
+      py::arg("K"), py::arg("r"), py::arg("sigma"),
+      py::arg("is_call"), py::arg("rannacher_smoothing") = false);
     // ======= Dispatcher =======
     m.def("solve_fdm", &solve_fdm,
           "Dispatcher for FDM methods returning interpolated price at S0",

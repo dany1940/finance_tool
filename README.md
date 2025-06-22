@@ -1,110 +1,137 @@
-# **📌 High-Performance Real-Time Stock Data Streaming System**
-🚀 **Optimized for Ultra-Low Latency (1-10µs) with Kafka, WebSockets, DPDK, ZeroMQ, and FastAPI** 🚀
+# 📌 High-Performance Finite Difference Method (FDM) Option Pricing System
 
-This system is designed to fetch, process, and deliver stock market data in **real-time** with **guaranteed message reliability**.
+🚀 **Built with Python, C++, Pybind11, FastAPI, and NiceGUI — Optimized for Financial Modeling and Real-Time Visualization** 🚀
 
 ---
 
-## **📌 Architecture Overview**
+## 📌 Architecture Overview
+
 The system integrates:
-✅ **C++ WebSockets** → Fetches real-time stock data from multiple exchanges.
-✅ **ZeroMQ (ZMQ)** → Fast inter-process messaging.
-✅ **Kafka** → Ensures message durability & recovery.
-✅ **DPDK (Data Plane Development Kit)** → Bypasses OS network stack for ultra-low latency.
-✅ **FastAPI** → WebSocket API for instant updates & HTTP3 for historical data.
-✅ **PostgreSQL** → Stores real-time & historical stock data.
+
+✅ **C++ Backends** – High-performance numerical solvers using finite difference methods
+✅ **Pybind11** – Bridges C++ methods into Python
+✅ **FastAPI** – Exposes backend functionality as clean, typed RESTful APIs
+✅ **NiceGUI + Matplotlib** – Interactive GUI with dynamic charts and result tables
+✅ **Poetry** – Dependency management and environment setup
+✅ **Makefile** – Build automation for C++ shared object (`.so`) generation
 
 ---
 
-## **📌 System Flow**
-### **🚀 1️⃣ Ultra-Low Latency Flow: DPDK + ZeroMQ + Kafka**
+## 📌 FDM Features Supported
+
+- ✅ Explicit Scheme
+- ✅ Implicit Scheme
+- ✅ Crank-Nicolson Scheme
+- ✅ American Option Pricing (via PSOR)
+- ✅ Exponential Integral
+- ✅ Fractional Time Derivatives
+- ✅ Compact Schemes (Advanced)
+- ✅ Surface Generation for 3D Visualization
+
+---
+
+## 📌 Folder Structure Overview
+
 ```
-[C++ WebSocket Client] 🡆 [ZeroMQ] 🡆 [Kafka Producer] 🡆 [Kafka Consumer (Python)] 🡆 [PostgreSQL]
-        |                |                         |                      |
-        |                |                         |                      |
-        |__________ [DPDK Packet Processing] ______|                      |
-                    |                                                  |
-             [Ultra-Fast Message Transport]                 [FastAPI WebSocket] 🡆 [Vue.js Clients]
+financial_tool/
+├── financial_models/
+│   ├── fdm_gui.py                 # GUI frontend (NiceGUI + Matplotlib)
+│   ├── routers/                   # FastAPI routers
+│   ├── src/                       # C++ source files (.cpp)
+│   ├── include/                   # C++ headers
+│   ├── build/                     # Compiled object files
+│   ├── financial_models_wrapper.cpp/.so # Pybind11 integration
+│   ├── main.py                    # FastAPI entrypoint
+│   ├── Makefile                   # Build C++ FDM solvers
+│   └── tests/                     # Pytest test suite
 ```
-✅ **Best for High-Frequency Trading (HFT) & Low-Latency Processing**
-✅ **Bypasses OS Network Stack (via DPDK) for Microsecond Latency**
-✅ **Ensures Message Delivery with Kafka Backup**
-✅ **Parallel Exchange Handling with Multithreading in C++**
 
 ---
 
-### **🌍 2️⃣ Standard Real-Time Flow: Kafka + WebSockets**
-```
-[C++ WebSocket Client] 🡆 [Kafka Producer] 🡆 [Kafka Consumer (Python)] 🡆 [PostgreSQL]
-        |                                                           |
-        |                                                           |
-        |__________ [FastAPI WebSocket] 🡆 [Vue.js Clients] ________|
-```
-✅ **Best for General Stock Data Streaming**
-✅ **Simple & Reliable, But Higher Latency (10-50ms)**
-✅ **Uses OS Network Stack (Higher Overhead Compared to DPDK)**
-✅ **Ensures Message Delivery with Kafka Retry Mechanism**
+## 📌 Getting Started
 
----
+### 🧰 1. Install Dependencies
 
-## **📌 Technology Breakdown**
-| **Technology**  | **Purpose** | **Benefits** |
-|----------------|------------|-------------|
-| **C++ WebSockets** | Fetch real-time stock data from multiple exchanges | ✅ Ultra-fast stock data retrieval |
-| **ZeroMQ** | Low-latency message transport | ✅ Non-blocking, Async communication |
-| **Kafka** | Durable message storage & event streaming | ✅ Ensures message delivery & replay |
-| **DPDK** | High-speed packet processing | ✅ Bypasses OS Kernel for low-latency |
-| **FastAPI (WebSocket)** | Serves real-time stock updates | ✅ Instant client updates |
-| **FastAPI (HTTP3)** | Serves historical stock data | ✅ Faster API calls with QUIC |
-| **PostgreSQL** | Stores real-time & historical data | ✅ SQL-based analytics & querying |
+#### ✅ Linux/macOS
 
----
-
-## **📌 Comparison: Ultra-Low Latency vs. Standard Real-Time Processing**
-| Feature                    | DPDK + ZeroMQ + Kafka | Kafka + WebSockets Only |
-|----------------------------|----------------------|-------------------|
-| **Latency**                 | **1-10µs** 🚀 | **10-50ms** |
-| **Packet Processing**       | **Bypasses Kernel (DPDK)** | **Uses OS Kernel (Higher Latency)** |
-| **Messaging**              | **ZeroMQ (Fast, Asynchronous, Non-Blocking)** | **WebSockets (TCP, Blocking)** |
-| **Data Loss Prevention**    | **Kafka Backup + ZeroMQ Fast Retry** | **Kafka Retry Only (Slower)** |
-| **Best Use Case**          | **HFT, Low-Latency Trading** | **Standard Stock Data Streaming** |
-
----
-
-## **📌 Setup & Installation**
-### **1️⃣ Install Dependencies**
-#### **📍 C++ Dependencies**
 ```bash
-brew install boost jsoncpp librdkafka zeromq
+# Prerequisites
+sudo apt install python3.11 python3.11-venv g++ make cmake
+
+# Install Poetry
+curl -sSL https://install.python-poetry.org | python3.11 -
+
+# Clone repo and initialize
+cd financial_tool
+poetry shell
+poetry install
+
+# Compile C++ solvers
+make
 ```
-#### **📍 Python Dependencies**
+
+#### ✅ Windows (via WSL recommended)
+
 ```bash
+# Use WSL with Ubuntu
+sudo apt update
+sudo apt install python3.11 python3.11-venv g++ make cmake
+
+# Install Poetry
+curl -sSL https://install.python-poetry.org | python3.11 -
+
+# Clone and build
+cd financial_tool
+poetry shell
+poetry install
+make
 ```
 
+---
 
-#### **📍 Start FastAPI Server**
+### ▶️ 2. Run the Application
+
 ```bash
 cd financial_tool/financial_models
-poetry shell
-uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+
+# Start FastAPI + GUI
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-
-
-🚀 **Now, real-time stock data will be processed and displayed in the Vue.js frontend!** 🚀
-
----
-
-## **📌 Future Improvements**
-✅ **Support More Exchanges** → Extend C++ WebSocket client to connect to more stock markets.
-✅ **Machine Learning for Trading Strategies** → Integrate AI models for automated decision-making.
-✅ **GPU-Accelerated Processing** → Use CUDA for even faster data handling.
-✅ **Edge Computing** → Deploy WebSocket clients closer to exchanges for reduced latency.
+Then open:
+🧪 **Swagger API:** http://localhost:8000/docs
+🖥️ **FDM GUI Frontend:** http://localhost:8000
 
 ---
 
-## **📌 Final Thoughts**
-🚀 **For Ultra-Low Latency:** Use **DPDK + ZeroMQ + Kafka** (1-10µs).
-🌍 **For Simplicity & Reliability:** Use **Kafka + WebSockets** (10-50ms).
+### ✅ 3. Run Tests
 
-📢 **Want to integrate this into a larger trading system?** Let’s discuss optimizations! 🚀
+```bash
+cd financial_tool/financial_models
+poetry run pytest tests/
+```
+
+---
+
+## 📌 Example Endpoints
+
+- `POST /fdm/explicit` – Compute price vector using explicit scheme
+- `POST /fdm/explicit_surface` – Return full price surface for 3D visualization
+- Similar endpoints available for `implicit`, `crank`, `american`, etc.
+
+---
+
+## 📌 Next Improvements
+
+- ⏱ Add asynchronous queueing (e.g., Celery or Redis) for batch runs
+- 📈 Support CSV/Excel export of computed surfaces
+- 💡 Add calibration and volatility models
+- 🧠 Machine Learning for pattern recognition or parameter inference
+- 📊 Interactive dashboard with Plotly or NiceGUI DataGrid
+
+---
+
+## 📌 Authors
+
+Developed by **Florin Dumitrascu**
+King’s College London | Quantitative Financial Modelling

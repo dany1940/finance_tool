@@ -6,7 +6,7 @@ import logging
 from crud.stock_analysis_models import (
     CommonParams, AmericanParams, FractionalParams, CompactParams,
     DispatcherParams, BootstrapParams, BootstrapResult, FDMResult, ResultItem,
-    BlackScholesParams, ResponseBlackscholes, VectorResult
+    BlackScholesParams, ResponseBlackscholes, VectorResult, SurfaceResult, SurfaceParams
 )
 
 import financial_models_wrapper as fm
@@ -239,4 +239,50 @@ async def crank_vector(params: CommonParams):
         return wrap_vector_result(vector, params.Smax, params.N)
     except Exception as e:
         logger.exception("Error in crank_nicolson_fdm_vector")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+# === Explicit Surface Endpoint ===
+@router.post("/explicit_surface", response_model=SurfaceResult)
+async def fdm_explicit_surface(params: SurfaceParams):
+    try:
+        logger.info("Running explicit FDM surface...")
+        result = fm.fdm_explicit_surface(
+            params.N, params.M, params.Smax, params.T,
+            params.K, params.r, params.sigma, params.is_call
+        )
+        return {"surface": result}
+    except Exception as e:
+        logger.error(f"Explicit FDM surface error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# === Implicit Surface Endpoint ===
+@router.post("/implicit_surface", response_model=SurfaceResult)
+async def fdm_implicit_surface(params: SurfaceParams):
+    try:
+        logger.info("Running implicit FDM surface...")
+        result = fm.fdm_implicit_surface(
+            params.N, params.M, params.Smax, params.T,
+            params.K, params.r, params.sigma, params.is_call
+        )
+        return {"surface": result}
+    except Exception as e:
+        logger.error(f"Implicit FDM surface error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# === Crank-Nicolson Surface Endpoint ===
+@router.post("/crank_surface", response_model=SurfaceResult)
+async def fdm_crank_surface(params: SurfaceParams):
+    try:
+        logger.info("Running crank-nicolson FDM surface...")
+        result = fm.fdm_crank_nicolson_surface(
+            params.N, params.M, params.Smax, params.T,
+            params.K, params.r, params.sigma, params.is_call
+        )
+        return {"surface": result}
+    except Exception as e:
+        logger.error(f"Crank-Nicolson FDM surface error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

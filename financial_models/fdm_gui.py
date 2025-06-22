@@ -1,17 +1,19 @@
 from nicegui import ui, page
-import json
 import httpx
 import asyncio
 from datetime import datetime, timedelta
-import plotly.graph_objs as go
+import matplotlib.pyplot as plt
+import io
+import base64
 import logging
+import numpy as np
 
 # === LOGGING ===
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("fdm_gui")
 
 # === STATE ===
-latest_vector = {"S_grid": [], "prices": []}
+latest_vector = {"S_grid": [], "prices": [], "final_price": 0.0}
 bs_price_label = None
 
 # === PAGE CONFIG ===
@@ -63,123 +65,153 @@ with ui.row().classes("w-full justify-center"):
         with ui.row().classes("gap-4 mt-4"):
             ui.button("Run FDM Solver", on_click=lambda: asyncio.create_task(compute_fdm()), color="blue")
             ui.button("Run Black-Scholes", on_click=lambda: asyncio.create_task(compute_bs()), color="orange")
-            ui.button("Show 2D Plot", on_click=lambda: asyncio.create_task(show_vector_plot('2d')))
-            ui.button("Show 3D Plot", on_click=lambda: asyncio.create_task(show_vector_plot('3d')))
+            ui.button("Show 2D Plot", on_click=lambda: asyncio.create_task(show_vector_plot('2d')), color="green")
+            ui.button("Show 3D Line", on_click=lambda: asyncio.create_task(show_vector_plot('3d')), color="cyan")
+            ui.button("Show Surface", on_click=lambda: asyncio.create_task(show_surface_plot()), color="purple")
             ui.button("Show Table", on_click=lambda: popup_table.open()).props("outline")
 
 # === TABLE POPUP ===
-with ui.dialog() as popup_table, ui.card().classes("bg-gray-900 p-4"):
-    ui.label("📋 Output Table").classes("text-white text-lg")
-    output_table = ui.table(columns=[
-        {'name': 'index', 'label': 'Index', 'field': 'index'},
-        {'name': 'value', 'label': 'Value', 'field': 'value'}
-    ], rows=[]).classes('w-full max-h-96 text-white')
+with ui.dialog() as popup_table, ui.card().classes("bg-gray-900 p-4 w-[600px]"):
+    ui.label("📋 Output Table").classes("text-white text-lg mb-2")
+    with ui.element("div").classes("h-[300px] overflow-y-auto"):
+        output_table = ui.table(columns=[
+            {'name': 'index', 'label': 'Index', 'field': 'index'},
+            {'name': 'value', 'label': 'Value', 'field': 'value'}
+        ], rows=[]).classes("w-full text-white")
     ui.button("Close", on_click=popup_table.close).classes("mt-4")
 
-# === 2D/3D POPUPS ===
-with ui.dialog() as popup2d, ui.card().classes("bg-gray-900 p-4"):
-    popup2d_plot = ui.plotly(go.Figure()).classes('w-full h-96')
-    ui.button("Close", on_click=popup2d.close).classes("mt-4")
-
-with ui.dialog() as popup3d, ui.card().classes("bg-gray-900 p-4"):
-    popup3d_plot = ui.plotly(go.Figure()).classes('w-full h-96')
+# === 2D/3D POPUP ===
+with ui.dialog() as popup3d, ui.card().classes("bg-gray-900 p-4 w-[1000px] h-[700px]"):
+    plot3d_image = ui.image().classes("w-full h-[600px] object-contain")
     ui.button("Close", on_click=popup3d.close).classes("mt-4")
 
-# === FDM COMPUTATION ===
+# === COMPUTE FDM ===
 async def compute_fdm():
     try:
         T_calc = compute_maturity(datetime_start.value, datetime_end.value)
         params = build_params(T_calc)
-        logger.info(f"📤 Sending to /fdm/{method.value} with:")
-        logger.info(json.dumps(params, indent=2))
-
         async with httpx.AsyncClient() as client:
             resp = await client.post(f"http://localhost:8000/fdm/{method.value}", json=params)
             resp.raise_for_status()
-            response_json = resp.json()
-            final = response_json.get("final_price", 0.0)
-            logger.info(f"📥 Final price: {final}")
+            data = resp.json()
+            final = data.get("final_price", 0.0)
+            final_price.text = f"Final Price: {final:.4f}"
     except Exception as e:
-        ui.notify(f"❌ Error: {str(e)}", type="negative")
-        logger.exception("API call error")
-        return
+        logger.exception("FDM Error")
+        ui.notify(f"❌ FDM Error: {str(e)}", type="negative")
 
-    final_price.text = f"Final Price: {final:.4f}" if final else "No result."
+# === BLACK-SCHOLES ===
+async def compute_bs():
+    try:
+        T_calc = compute_maturity(datetime_start.value, datetime_end.value)
+        params = {
+            "S": S0.value, "K": K.value, "T": T_calc,
+            "r": r.value, "sigma": sigma.value, "is_call": is_call.value,
+        }
+        async with httpx.AsyncClient() as client:
+            resp = await client.post("http://localhost:8000/fdm/black_scholes", json=params)
+            resp.raise_for_status()
+            data = resp.json()
+            bs_price_label.text = f"Black-Scholes Price: {data['price']:.4f}"
+    except Exception as e:
+        logger.exception("BS Error")
+        ui.notify(f"❌ Black-Scholes Error: {str(e)}", type="negative")
 
-# === VECTOR PLOT FETCH AND SHOW ===
+# === SHOW VECTOR (2D/3D LINE) ===
 async def show_vector_plot(plot_type: str):
     try:
         T_calc = compute_maturity(datetime_start.value, datetime_end.value)
         params = build_params(T_calc)
-        endpoint = f"http://localhost:8000/fdm/{method.value}_vector"
-        logger.info(f"📤 Sending to {endpoint} with:")
-        logger.info(json.dumps(params, indent=2))
-
         async with httpx.AsyncClient() as client:
-            resp = await client.post(endpoint, json=params)
+            resp = await client.post(f"http://localhost:8000/fdm/{method.value}_vector", json=params)
             resp.raise_for_status()
-            response_json = resp.json()
+            data = resp.json()
 
-            S_grid = response_json.get("S_grid", [])
-            prices = response_json.get("prices", [])
-            final = response_json.get("final_price", 0.0)
+        S_grid = data["S_grid"]
+        prices = data["prices"]
+        latest_vector["S_grid"] = S_grid
+        latest_vector["prices"] = prices
+        output_table.rows = [{"index": i, "value": prices[i]} for i in range(len(prices))]
 
-            if not S_grid or not prices:
-                ui.notify("❌ Received empty vector data for plotting", type="negative")
-                return
+        fig = plt.figure()
+        if plot_type == '2d':
+            ax = fig.add_subplot(111)
+            ax.plot(S_grid, prices)
+            ax.set_title('Option Price vs Asset Price')
+            ax.set_xlabel('S')
+            ax.set_ylabel('Price')
+            ax.grid(True)
+        elif plot_type == '3d':
+            ax = fig.add_subplot(111, projection='3d')
+            ax.plot(S_grid, [0] * len(S_grid), prices)
+            ax.set_xlabel("S")
+            ax.set_ylabel("Time")
+            ax.set_zlabel("Price")
+            ax.set_title("Option Price at Maturity")
+            ax.view_init(elev=30, azim=-135)
 
-            # Save latest vector for table and plotting
-            latest_vector["S_grid"] = S_grid
-            latest_vector["prices"] = prices
-            latest_vector["final_price"] = final
-
-            # Update table with vector data
-            rows = [{"index": i, "value": prices[i]} for i in range(len(prices))]
-            output_table.rows = rows
-
-            # Plot 2D or 3D graph
-            if plot_type == '2d':
-                fig2d = go.Figure(data=[go.Scatter(x=S_grid, y=prices, mode="lines")])
-                popup2d_plot.figure = fig2d
-                popup2d.open()
-            elif plot_type == '3d':
-                fig3d = go.Figure(data=[go.Scatter3d(
-                    x=S_grid,
-                    y=[K.value] * len(prices),
-                    z=prices,
-                    mode="lines"
-                )])
-                popup3d_plot.figure = fig3d
-                popup3d.open()
+        buf = io.BytesIO()
+        fig.tight_layout()
+        fig.savefig(buf, format='png', dpi=150)
+        buf.seek(0)
+        plot3d_image.source = f'data:image/png;base64,{base64.b64encode(buf.read()).decode()}'
+        popup3d.open()
+        plt.close(fig)
     except Exception as e:
-        ui.notify(f"❌ Error fetching vector data: {str(e)}", type="negative")
-        logger.exception("API vector call error")
+        logger.exception("Vector Plot Error")
+        ui.notify(f"❌ Plot Error: {str(e)}", type="negative")
 
-# === UTILS ===
+# === SHOW SURFACE PLOT ===
+async def show_surface_plot():
+    try:
+        T_calc = compute_maturity(datetime_start.value, datetime_end.value)
+        params = build_params(T_calc)
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(f"http://localhost:8000/fdm/{method.value}_surface", json=params)
+            resp.raise_for_status()
+            data = resp.json()
+
+        S = np.array(data["S_grid"])
+        t = np.array(data["t_grid"])
+        V = np.array(data["price_surface"])
+        S_mesh, t_mesh = np.meshgrid(S, t)
+
+        fig = plt.figure(figsize=(10, 6))
+        ax = fig.add_subplot(111, projection='3d')
+        surf = ax.plot_surface(S_mesh, t_mesh, V, cmap='coolwarm', edgecolor='k', linewidth=0.3, antialiased=True)
+        ax.set_xlabel("S")
+        ax.set_ylabel("T")
+        ax.set_zlabel("Option Price")
+        ax.set_title("Option Price Surface")
+        ax.view_init(elev=30, azim=-135)
+        fig.colorbar(surf, shrink=0.5, aspect=12, label="Price")
+        fig.tight_layout()
+
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png', dpi=150)
+        buf.seek(0)
+        plot3d_image.source = f'data:image/png;base64,{base64.b64encode(buf.read()).decode()}'
+        popup3d.open()
+        plt.close(fig)
+    except Exception as e:
+        logger.exception("Surface Plot Error")
+        ui.notify(f"❌ Surface plot error: {str(e)}", type="negative")
+
+# === MATURITY ===
 def compute_maturity(start_str, end_str):
-    start = datetime.now()
-    end = start + timedelta(days=365)
-    for dt_str in (start_str,):
-        if dt_str:
-            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
-                try:
-                    start = datetime.strptime(dt_str.strip(), fmt)
-                    break
-                except ValueError:
-                    continue
-    for dt_str in (end_str,):
-        if dt_str:
-            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
-                try:
-                    end = datetime.strptime(dt_str.strip(), fmt)
-                    break
-                except ValueError:
-                    continue
-    T_calc = (end - start).total_seconds() / (365 * 24 * 60 * 60)
-    return max(T_calc, 1e-6)
+    try:
+        start = datetime.strptime(start_str.strip(), "%Y-%m-%d")
+    except:
+        start = datetime.now()
+    try:
+        end = datetime.strptime(end_str.strip(), "%Y-%m-%d")
+    except:
+        end = start + timedelta(days=365)
+    return max((end - start).total_seconds() / (365 * 24 * 60 * 60), 1e-6)
 
+# === PARAM BUILD ===
 def build_params(T_calc):
-    params = {
+    p = {
         "N": N.value,
         "M": M.value,
         "Smax": Smax.value,
@@ -192,40 +224,12 @@ def build_params(T_calc):
         "option_style": option_type.value,
         "vol_source": vol_source.value,
         "grid_scheme": grid_scheme.value,
-        "cfl": cfl_toggle.value == 'on'
+        "cfl": cfl_toggle.value == 'on',
     }
-    if method.value == 'american':
-        params.update({"omega": omega.value, "maxIter": max_iter.value, "tol": tol.value})
-    elif method.value == 'fractional':
-        params.update({"beta": beta.value})
-    elif method.value == 'compact':
-        params.update({"dx": dx.value, "maxIter": max_iter.value})
-    return params
-
-# === BLACK-SCHOLES COMPUTATION ===
-async def compute_bs():
-    try:
-        T_calc = compute_maturity(datetime_start.value, datetime_end.value)
-        params = {
-            "S": S0.value,
-            "K": K.value,
-            "T": T_calc,
-            "r": r.value,
-            "sigma": sigma.value,
-            "is_call": is_call.value,
-        }
-        async with httpx.AsyncClient() as client:
-            resp = await client.post("http://localhost:8000/fdm/black_scholes", json=params)
-            resp.raise_for_status()
-            response_json = resp.json()
-            price = response_json.get("price", None)
-            logger.info(f"📥 Black-Scholes price: {price}")
-    except Exception as e:
-        ui.notify(f"❌ Black-Scholes Error: {str(e)}", type="negative")
-        logger.exception("Black-Scholes API call error")
-        return
-
-    if price is not None:
-        bs_price_label.text = f"Black-Scholes Price: {price:.4f}"
-    else:
-        bs_price_label.text = "Black-Scholes Price: Error"
+    if method.value == "american":
+        p.update({"omega": omega.value, "maxIter": max_iter.value, "tol": tol.value})
+    elif method.value == "fractional":
+        p.update({"beta": beta.value})
+    elif method.value == "compact":
+        p.update({"dx": dx.value, "maxIter": max_iter.value})
+    return p

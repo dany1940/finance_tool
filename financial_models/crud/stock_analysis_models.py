@@ -1,6 +1,6 @@
 from typing import Dict, Any, List, Literal, Optional
-from pydantic import BaseModel, Field,  model_validator
-from datetime import datetime, date
+from pydantic import BaseModel, Field
+from datetime import date
 
 # === Summary Stats (Optional for Bootstrap) ===
 class StockAnalysisItem(BaseModel):
@@ -109,3 +109,20 @@ class VectorResult(BaseModel):
 
 class ResponseBlackscholes(BaseModel):
     price: float = Field(..., description="Calculated option price using Black-Scholes formula")
+
+
+
+# === Request & Response Models ===
+class SurfaceParams(BaseModel):
+    N: int
+    M: int
+    Smax: float
+    T: float
+    K: float
+    r: float
+    sigma: float
+    is_call: bool
+
+
+class SurfaceResult(BaseModel):
+    surface: List[List[float]]

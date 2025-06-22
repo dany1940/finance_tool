@@ -87,4 +87,21 @@ double solve_fdm(
     double S0
 );
 
+// ===== Surface-returning FDM methods =====
+std::vector<std::vector<double>> fdm_explicit_surface(
+    int N, int M, double Smax, double T, double K,
+    double r, double sigma, bool isCall
+);
+
+std::vector<std::vector<double>> fdm_implicit_surface(
+    int N, int M, double Smax, double T, double K,
+    double r, double sigma, bool isCall
+);
+
+std::vector<std::vector<double>> fdm_crank_nicolson_surface(
+    int N, int M, double Smax, double T, double K,
+    double r, double sigma, bool isCall,
+    bool rannacher_smoothing
+);
+
 #endif // FINITE_DIFFERENCE_ALL_H

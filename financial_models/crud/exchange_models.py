@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing import List, Optional
 
 class YahooExchange(BaseModel):
@@ -36,4 +36,5 @@ class StockDataResponse(BaseModel):
     status: str
     message: Optional[str] = None
     data: YahooExchangeSummary
+
 

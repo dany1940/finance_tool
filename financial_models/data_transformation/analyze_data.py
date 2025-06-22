@@ -1,6 +1,4 @@
-import polars as pl
 from pyspark.sql import SparkSession
-from io import BytesIO
 import logging
 
 logging.basicConfig(level=logging.INFO)
