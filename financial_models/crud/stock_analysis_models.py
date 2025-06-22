@@ -90,3 +90,22 @@ class ResultItem(BaseModel):
 class FDMResult(BaseModel):
     result: List[ResultItem]
     final_price: float
+
+class BlackScholesParams(BaseModel):
+    S: float = Field(..., description="Spot price")
+    K: float = Field(..., description="Strike price")
+    T: float = Field(..., description="Time to maturity")
+    r: float = Field(..., description="Risk-free rate")
+    sigma: float = Field(..., description="Volatility")
+    is_call: bool = Field(..., description="Call or Put option")
+
+
+# === Pydantic Response Model for Vector Results ===
+class VectorResult(BaseModel):
+    S_grid: List[float]
+    prices: List[float]
+    final_price: float
+
+
+class ResponseBlackscholes(BaseModel):
+    price: float = Field(..., description="Calculated option price using Black-Scholes formula")

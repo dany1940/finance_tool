@@ -2,19 +2,17 @@
 #define FINITE_DIFFERENCE_ALL_H
 
 #include <vector>
-#include <cmath>
 #include <string>
-#include <stdexcept>
-#include <iostream>
 
-using namespace std;
+// ======= Cubic spline interpolation helper =======
+double interpolate_result(const std::vector<double>& V, const std::vector<double>& S, double S0);
 
 // ======= Tridiagonal Solver =======
-vector<double> solve_tridiagonal(
-    const vector<double>& a,
-    const vector<double>& b,
-    const vector<double>& c,
-    const vector<double>& d
+std::vector<double> solve_tridiagonal(
+    const std::vector<double>& a,
+    const std::vector<double>& b,
+    const std::vector<double>& c,
+    const std::vector<double>& d
 );
 
 // ======= Boundary Condition Helper =======
@@ -22,57 +20,71 @@ double boundaryCondition(
     double S, double K, double T, double t, double r, bool isCall
 );
 
-// ======= Finite Difference Methods Declarations =======
-
-// Explicit Method
-vector<double> fdm_explicit(
+// ======= Explicit FDM (returns full vector) =======
+std::vector<double> fdm_explicit_vector(
     int N, int M, double Smax, double T, double K,
     double r, double sigma, bool isCall
 );
 
-// Implicit Method
-vector<double> fdm_implicit(
-    int N, int M, double Smax, double T, double K,
-    double r, double sigma, bool isCall
-);
-
-// Crank-Nicolson Method with optional Rannacher smoothing
-vector<double> fdm_crank_nicolson(
+// ======= Crank-Nicolson FDM (returns full vector) =======
+std::vector<double> fdm_crank_nicolson_vector(
     int N, int M, double Smax, double T, double K,
     double r, double sigma, bool isCall,
-    bool rannacher_smoothing = false
+    bool rannacher_smoothing
 );
 
-// American Option using PSOR (Projected Successive Over-Relaxation)
-vector<double> fdm_american_psor(
+// ======= Finite Difference Methods (return interpolated price at S0) =======
+double fdm_explicit(
     int N, int M, double Smax, double T, double K,
     double r, double sigma, bool isCall,
-    double omega = 1.2, int maxIter = 10000, double tol = 1e-6
+    double S0
 );
 
-// Compact 4th-order 2nd derivative (used in high-accuracy schemes)
-vector<double> compact_4th_order_second_derivative(
-    const vector<double>& V, double dx
+double fdm_implicit(
+    int N, int M, double Smax, double T, double K,
+    double r, double sigma, bool isCall,
+    double S0
 );
 
-// Experimental Exponential Integral Method
-vector<double> fdm_exponential_integral(
+double fdm_crank_nicolson(
+    int N, int M, double Smax, double T, double K,
+    double r, double sigma, bool isCall,
+    bool rannacher_smoothing,
+    double S0
+);
+
+double fdm_american_psor(
+    int N, int M, double Smax, double T, double K,
+    double r, double sigma, bool isCall,
+    double omega, int maxIter, double tol,
+    double S0
+);
+
+double fdm_exponential_integral(
     int N, double Smax, double T, double K,
-    double r, double sigma, bool isCall
+    double r, double sigma, bool isCall,
+    double S0
 );
 
-// Time-Fractional FDM (for fractional Black-Scholes equations)
-vector<double> fdm_time_fractional(
-    int N, int M, double Smax, double T, double K,
-    double r, double sigma, bool isCall, double beta
-);
-
-// ======= Dispatcher Function (selects method by name) =======
-vector<double> solve_fdm(
-    const string& method,
+double fdm_time_fractional(
     int N, int M, double Smax, double T, double K,
     double r, double sigma, bool isCall,
-    double beta = 0.5, bool rannacher_smoothing = false
+    double beta,
+    double S0
+);
+
+// ======= Compact 4th-order 2nd derivative (returns full vector) =======
+std::vector<double> compact_4th_order_second_derivative(
+    const std::vector<double>& V, double dx
+);
+
+// ======= Dispatcher Function (returns interpolated price at S0) =======
+double solve_fdm(
+    const std::string& method,
+    int N, int M, double Smax, double T, double K,
+    double r, double sigma, bool isCall,
+    double beta, bool rannacher_smoothing,
+    double S0
 );
 
 #endif // FINITE_DIFFERENCE_ALL_H

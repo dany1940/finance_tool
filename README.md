@@ -1,5 +1,5 @@
 # **📌 High-Performance Real-Time Stock Data Streaming System**
-🚀 **Optimized for Ultra-Low Latency (1-10µs) with Kafka, WebSockets, DPDK, ZeroMQ, and FastAPI** 🚀  
+🚀 **Optimized for Ultra-Low Latency (1-10µs) with Kafka, WebSockets, DPDK, ZeroMQ, and FastAPI** 🚀
 
 This system is designed to fetch, process, and deliver stock market data in **real-time** with **guaranteed message reliability**.
 
@@ -7,13 +7,12 @@ This system is designed to fetch, process, and deliver stock market data in **re
 
 ## **📌 Architecture Overview**
 The system integrates:
-✅ **C++ WebSockets** → Fetches real-time stock data from multiple exchanges.  
-✅ **ZeroMQ (ZMQ)** → Fast inter-process messaging.  
-✅ **Kafka** → Ensures message durability & recovery.  
-✅ **DPDK (Data Plane Development Kit)** → Bypasses OS network stack for ultra-low latency.  
-✅ **FastAPI** → WebSocket API for instant updates & HTTP3 for historical data.  
-✅ **PostgreSQL** → Stores real-time & historical stock data.  
-✅ **Vue.js Frontend** → Displays stock data & ensures no message loss.
+✅ **C++ WebSockets** → Fetches real-time stock data from multiple exchanges.
+✅ **ZeroMQ (ZMQ)** → Fast inter-process messaging.
+✅ **Kafka** → Ensures message durability & recovery.
+✅ **DPDK (Data Plane Development Kit)** → Bypasses OS network stack for ultra-low latency.
+✅ **FastAPI** → WebSocket API for instant updates & HTTP3 for historical data.
+✅ **PostgreSQL** → Stores real-time & historical stock data.
 
 ---
 
@@ -27,10 +26,10 @@ The system integrates:
                     |                                                  |
              [Ultra-Fast Message Transport]                 [FastAPI WebSocket] 🡆 [Vue.js Clients]
 ```
-✅ **Best for High-Frequency Trading (HFT) & Low-Latency Processing**  
-✅ **Bypasses OS Network Stack (via DPDK) for Microsecond Latency**  
-✅ **Ensures Message Delivery with Kafka Backup**  
-✅ **Parallel Exchange Handling with Multithreading in C++**  
+✅ **Best for High-Frequency Trading (HFT) & Low-Latency Processing**
+✅ **Bypasses OS Network Stack (via DPDK) for Microsecond Latency**
+✅ **Ensures Message Delivery with Kafka Backup**
+✅ **Parallel Exchange Handling with Multithreading in C++**
 
 ---
 
@@ -41,10 +40,10 @@ The system integrates:
         |                                                           |
         |__________ [FastAPI WebSocket] 🡆 [Vue.js Clients] ________|
 ```
-✅ **Best for General Stock Data Streaming**  
-✅ **Simple & Reliable, But Higher Latency (10-50ms)**  
-✅ **Uses OS Network Stack (Higher Overhead Compared to DPDK)**  
-✅ **Ensures Message Delivery with Kafka Retry Mechanism**  
+✅ **Best for General Stock Data Streaming**
+✅ **Simple & Reliable, But Higher Latency (10-50ms)**
+✅ **Uses OS Network Stack (Higher Overhead Compared to DPDK)**
+✅ **Ensures Message Delivery with Kafka Retry Mechanism**
 
 ---
 
@@ -58,7 +57,6 @@ The system integrates:
 | **FastAPI (WebSocket)** | Serves real-time stock updates | ✅ Instant client updates |
 | **FastAPI (HTTP3)** | Serves historical stock data | ✅ Faster API calls with QUIC |
 | **PostgreSQL** | Stores real-time & historical data | ✅ SQL-based analytics & querying |
-| **Vue.js** | Real-time UI updates | ✅ WebSocket-based live data streaming |
 
 ---
 
@@ -81,50 +79,32 @@ brew install boost jsoncpp librdkafka zeromq
 ```
 #### **📍 Python Dependencies**
 ```bash
-pip install fastapi confluent-kafka asyncpg uvicorn
-```
-#### **📍 PostgreSQL Database**
-```bash
-brew install postgresql
 ```
 
----
-
-### **2️⃣ Compile & Run**
-#### **📍 Start C++ WebSocket Client**
-```bash
-cd cpp_ws_client
-make clean && make
-./client
-```
 
 #### **📍 Start FastAPI Server**
 ```bash
-cd fastapi_server
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --http-impl httptools
+cd financial_tool/financial_models
+poetry shell
+uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-#### **📍 Start Vue.js Frontend**
-```bash
-cd vue_frontend
-npm install
-npm run dev
-```
 
-🚀 **Now, real-time stock data will be processed and displayed in the Vue.js frontend!** 🚀  
+
+🚀 **Now, real-time stock data will be processed and displayed in the Vue.js frontend!** 🚀
 
 ---
 
 ## **📌 Future Improvements**
-✅ **Support More Exchanges** → Extend C++ WebSocket client to connect to more stock markets.  
-✅ **Machine Learning for Trading Strategies** → Integrate AI models for automated decision-making.  
-✅ **GPU-Accelerated Processing** → Use CUDA for even faster data handling.  
-✅ **Edge Computing** → Deploy WebSocket clients closer to exchanges for reduced latency.  
+✅ **Support More Exchanges** → Extend C++ WebSocket client to connect to more stock markets.
+✅ **Machine Learning for Trading Strategies** → Integrate AI models for automated decision-making.
+✅ **GPU-Accelerated Processing** → Use CUDA for even faster data handling.
+✅ **Edge Computing** → Deploy WebSocket clients closer to exchanges for reduced latency.
 
 ---
 
 ## **📌 Final Thoughts**
-🚀 **For Ultra-Low Latency:** Use **DPDK + ZeroMQ + Kafka** (1-10µs).  
-🌍 **For Simplicity & Reliability:** Use **Kafka + WebSockets** (10-50ms).  
+🚀 **For Ultra-Low Latency:** Use **DPDK + ZeroMQ + Kafka** (1-10µs).
+🌍 **For Simplicity & Reliability:** Use **Kafka + WebSockets** (10-50ms).
 
 📢 **Want to integrate this into a larger trading system?** Let’s discuss optimizations! 🚀
