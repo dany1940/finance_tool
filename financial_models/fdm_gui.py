@@ -15,7 +15,9 @@ logger = logging.getLogger("fdm_gui")
 # === STATE ===
 latest_vector = {"S_grid": [], "prices": [], "final_price": 0.0}
 bs_price_label = None
-
+# === VALID METHODS BY OPTION STYLE ===
+european_methods = ['explicit', 'implicit', 'crank', 'fractional', 'exponential', 'compact']
+american_methods = ['psor']
 # === PAGE CONFIG ===
 page.title = "FDM Calculator"
 ui.dark_mode().enable()
@@ -27,9 +29,25 @@ with ui.row().classes("w-full justify-center"):
         ui.markdown("### Method & Market Parameters").classes("text-xl")
 
         with ui.row().classes("gap-4"):
-            method = ui.select(['explicit', 'implicit', 'crank', 'american', 'fractional', 'exponential', 'compact'],
-                               label='Finite Difference Method', value='explicit').classes('w-56')
+            # Method dropdown, defaulting to European methods
+            method = ui.select(european_methods, label='Finite Difference Method', value='explicit').classes('w-56')
+
+            # Option type dropdown
             option_type = ui.select(['European', 'American'], label='Option Style', value='European').classes('w-56')
+
+            # Callback: change method options based on selected option type
+            def update_method_options():
+                if option_type.value == 'American':
+                    method.options = american_methods
+                    method.value = american_methods[0]
+                else:
+                    method.options = european_methods
+                    method.value = european_methods[0]
+
+            # Trigger callback initially and on update
+            option_type.on("update:model-value", lambda e: update_method_options())
+            update_method_options()  # Call once at init
+
             vol_source = ui.select(['User-defined', 'Implied'], label='Volatility Source', value='User-defined').classes('w-56')
             grid_scheme = ui.select(['uniform', 'adaptive'], label="Grid Scheme", value='uniform').classes("w-56")
 
@@ -60,13 +78,37 @@ with ui.row().classes("w-full justify-center"):
         with ui.row().classes("gap-4"):
             final_price = ui.label("Final Price:").classes("text-green-400 text-xl border border-green-400 p-2 rounded w-full")
         with ui.row().classes("gap-4"):
-            bs_price_label = ui.label("Black-Scholes Price:").classes("text-yellow-400 text-xl border border-yellow-400 p-2 rounded w-full")
-
+           comparison_label = ui.label("Comparison Result:").classes("text-yellow-400 text-xl border border-yellow-400 p-2 rounded w-full")
         with ui.row().classes("gap-4 mt-4"):
             ui.button("Run FDM Solver", on_click=lambda: asyncio.create_task(compute_fdm()), color="blue")
-            ui.button("Run Black-Scholes", on_click=lambda: asyncio.create_task(compute_bs()), color="orange")
-            ui.button("Show 2D Plot", on_click=lambda: asyncio.create_task(show_vector_plot('2d')), color="green")
-            ui.button("Show 3D Line", on_click=lambda: asyncio.create_task(show_vector_plot('3d')), color="cyan")
+            compare_button = ui.button(
+                "Compare with Binomial",
+                on_click=lambda: asyncio.create_task(compare_with_binomial()),
+                color="orange"
+            )
+            compare_button.bind_visibility_from(option_type, 'value', lambda v: v == 'American')
+
+            def show_early_exercise_info():
+                ui.notify(
+                    "📘 American options allow early exercise before expiry.\n"
+                    "This creates a free boundary problem handled using methods like PSOR.",
+                    type="info"
+                )
+            ui.button(
+                "Show 2D Plot",
+                on_click=lambda: asyncio.create_task(
+                    show_comparison_plot() if option_type.value == 'American' else show_vector_plot('2d')
+                ),
+                color="green"
+            )
+
+            ui.button(
+                "Show 3D Line",
+                on_click=lambda: asyncio.create_task(
+                    show_comparison_plot() if option_type.value == 'American' else show_vector_plot('3d')
+                ),
+                color="cyan"
+            )
             ui.button("Show Surface", on_click=lambda: asyncio.create_task(show_surface_plot()), color="purple")
             ui.button("Show Table", on_click=lambda: popup_table.open()).props("outline")
 
@@ -85,21 +127,81 @@ with ui.dialog() as popup3d, ui.card().classes("bg-gray-900 p-4 w-[1000px] h-[70
     plot3d_image = ui.image().classes("w-full h-[600px] object-contain")
     ui.button("Close", on_click=popup3d.close).classes("mt-4")
 
-# === COMPUTE FDM ===
+
 async def compute_fdm():
     try:
         T_calc = compute_maturity(datetime_start.value, datetime_end.value)
         params = build_params(T_calc)
+
         async with httpx.AsyncClient() as client:
-            resp = await client.post(f"http://localhost:8000/fdm/{method.value}", json=params)
-            resp.raise_for_status()
-            data = resp.json()
+            # Run FDM solver
+            resp_fdm = await client.post(f"http://localhost:8000/fdm/{method.value}", json=params)
+            resp_fdm.raise_for_status()
+            data = resp_fdm.json()
             final = data.get("final_price", 0.0)
             final_price.text = f"Final Price: {final:.4f}"
+
+            if option_type.value == 'European':
+                # Also run Black-Scholes for comparison
+                bs_params = {
+                    "S": S0.value, "K": K.value, "T": T_calc,
+                    "r": r.value, "sigma": sigma.value, "is_call": is_call.value,
+                }
+                resp_bs = await client.post("http://localhost:8000/fdm/black_scholes", json=bs_params)
+                resp_bs.raise_for_status()
+                bs_data = resp_bs.json()
+                bs_price = bs_data.get("price", 0.0)
+
+                diff = abs(final - bs_price)
+                comparison_label.text = f"{method.value.capitalize()} vs Black-Scholes:\nFDM: {final:.4f} | BS: {bs_price:.4f} | Δ: {diff:.4f}"
+            else:
+                # Compare PSOR (American) vs Implicit (European)
+                european_params = params.copy()
+                european_params["option_style"] = "European"
+                european_params["method"] = "implicit"
+
+                resp_implicit = await client.post("http://localhost:8000/fdm/implicit", json=european_params)
+                resp_implicit.raise_for_status()
+                implicit_result = resp_implicit.json().get("final_price", 0.0)
+
+                diff = abs(final - implicit_result)
+                comparison_label.text = f"PSOR vs Implicit:\nPSOR: {final:.4f} | Implicit: {implicit_result:.4f} | Δ: {diff:.4f}"
+
     except Exception as e:
         logger.exception("FDM Error")
         ui.notify(f"❌ FDM Error: {str(e)}", type="negative")
 
+# === COMPARE WITH BINOMIAL ===
+async def compare_with_binomial():
+    try:
+        T_calc = compute_maturity(datetime_start.value, datetime_end.value)
+        params = build_params(T_calc)
+
+        # American PSOR
+        async with httpx.AsyncClient() as client:
+            resp_psor = await client.post("http://localhost:8000/fdm/psor", json=params)
+            resp_psor.raise_for_status()
+            result_psor = resp_psor.json().get("final_price", 0.0)
+
+            # European Binomial
+            european_params = params.copy()
+            european_params["option_style"] = "European"
+            resp_binom = await client.post("http://localhost:8000/fdm/binomial", json=european_params)
+            resp_binom.raise_for_status()
+            result_binom = resp_binom.json().get("final_price", 0.0)
+
+        diff = abs(result_psor - result_binom)
+        final_price.text = f"Final Price (PSOR): {result_psor:.4f}"
+
+        ui.notify(
+            f"📊 PSOR (American): {result_psor:.4f} vs Binomial (European): {result_binom:.4f} | Δ = {diff:.4f}",
+            type="info",
+            timeout=8000
+        )
+
+    except Exception as e:
+        logger.exception("Binomial Comparison Error")
+        ui.notify(f"❌ Comparison with Binomial failed: {str(e)}", type="negative")
 # === BLACK-SCHOLES ===
 async def compute_bs():
     try:
@@ -116,6 +218,8 @@ async def compute_bs():
     except Exception as e:
         logger.exception("BS Error")
         ui.notify(f"❌ Black-Scholes Error: {str(e)}", type="negative")
+
+
 
 # === SHOW VECTOR (2D/3D LINE) ===
 async def show_vector_plot(plot_type: str):
@@ -160,6 +264,53 @@ async def show_vector_plot(plot_type: str):
     except Exception as e:
         logger.exception("Vector Plot Error")
         ui.notify(f"❌ Plot Error: {str(e)}", type="negative")
+
+async def show_comparison_plot():
+    try:
+        T_calc = compute_maturity(datetime_start.value, datetime_end.value)
+        params = build_params(T_calc)
+
+        # Copy params and change option style to European for comparison
+        european_params = params.copy()
+        european_params["option_style"] = "European"
+
+        async with httpx.AsyncClient() as client:
+            # PSOR (American)
+            resp_psor = await client.post(f"http://localhost:8000/fdm/psor_vector", json=params)
+            resp_psor.raise_for_status()
+            data_psor = resp_psor.json()
+
+            # Implicit (European)
+            resp_impl = await client.post(f"http://localhost:8000/fdm/implicit_vector", json=european_params)
+            resp_impl.raise_for_status()
+            data_impl = resp_impl.json()
+
+        S = data_psor["S_grid"]
+        V_psor = data_psor["prices"]
+        V_impl = data_impl["prices"]
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        ax.plot(S, V_psor, label="American (PSOR)", linestyle="-")
+        ax.plot(S, V_impl, label="European (Implicit)", linestyle="--")
+        ax.set_xlabel("Asset Price S")
+        ax.set_ylabel("Option Value")
+        ax.set_title("Comparison: American vs European Option")
+        ax.legend()
+        ax.grid(True)
+
+        buf = io.BytesIO()
+        fig.tight_layout()
+        fig.savefig(buf, format='png', dpi=150)
+        buf.seek(0)
+        plot3d_image.source = f'data:image/png;base64,{base64.b64encode(buf.read()).decode()}'
+        popup3d.open()
+        plt.close(fig)
+
+    except Exception as e:
+        logger.exception("Comparison Plot Error")
+        ui.notify(f"❌ Comparison plot error: {str(e)}", type="negative")
+
 
 # === SHOW SURFACE PLOT ===
 async def show_surface_plot():
