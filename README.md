@@ -121,16 +121,6 @@ poetry run pytest tests/
 
 ---
 
-## 📌 Next Improvements
-
-- ⏱ Add asynchronous queueing (e.g., Celery or Redis) for batch runs
-- 📈 Support CSV/Excel export of computed surfaces
-- 💡 Add calibration and volatility models
-- 🧠 Machine Learning for pattern recognition or parameter inference
-- 📊 Interactive dashboard with Plotly or NiceGUI DataGrid
-
----
-
 ## 📌 Authors
 
 Developed by **Florin Dumitrascu**
