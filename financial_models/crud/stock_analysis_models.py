@@ -125,4 +125,6 @@ class SurfaceParams(BaseModel):
 
 
 class SurfaceResult(BaseModel):
-    surface: List[List[float]]
+    S_grid: List[float]
+    t_grid: List[float]
+    price_surface: List[List[float]]

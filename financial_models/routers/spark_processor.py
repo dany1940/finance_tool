@@ -56,6 +56,7 @@ async def download_stock_data(
         logger.error(f"Error fetching stock data: {e}")
         return {"error": str(e)}
 
+
 @router.get("/analyze")
 async def analyze_stocks(
     tickers: List[str] = Query(["AAPL"], title="Stock Tickers", description="Select one or more stock symbols", enum=AVAILABLE_TICKERS),

@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <stdexcept>
 #include <iostream>
+#include <vector>
+#include <numeric>
 
 // ======= Helper: Boundary Condition for option =======
 double boundaryCondition(double S, double K, double T, double t, double r, bool isCall) {
@@ -327,6 +329,8 @@ double fdm_time_fractional(int N, int M, double Smax, double T, double K,
     return interpolate_result(V, S, S0);
 }
 
+
+
 // ======= Solve FDM Dispatcher =======
 double solve_fdm(const std::string& method, int N, int M, double Smax, double T, double K,
                  double r, double sigma, bool isCall,
@@ -356,13 +360,7 @@ double solve_fdm(const std::string& method, int N, int M, double Smax, double T,
         return fdm_exponential_integral(N, Smax, T, K, r, sigma, isCall, S0);
 
     else if (method == "compact") {
-        std::vector<double> V = fdm_explicit_vector(N, M, Smax, T, K, r, sigma, isCall);
-        double dx = Smax / N;
-        std::vector<double> d2V = compact_4th_order_second_derivative(V, dx);
-        std::vector<double> S(N + 1);
-        for (int i = 0; i <= N; ++i)
-            S[i] = i * dx;
-        return interpolate_result(d2V, S, S0);
+        return fdm_compact(N, M, Smax, T, K, r, sigma, isCall, S0);
     }
 
     else {
@@ -600,4 +598,342 @@ std::vector<std::vector<double>> fdm_crank_nicolson_surface(
     }
 
     return surface;
+}
+
+std::vector<double> fdm_compact_vector(int N, int M, double Smax, double T, double K,
+                                       double r, double sigma, bool isCall) {
+    double dS = Smax / N;
+    double dt = T / M;
+
+    std::vector<double> S(N + 1), V(N + 1);
+    for (int i = 0; i <= N; ++i) {
+        S[i] = i * dS;
+        V[i] = isCall ? std::max(S[i] - K, 0.0) : std::max(K - S[i], 0.0);
+    }
+
+    std::vector<double> a(N - 1), b(N - 1), c(N - 1), rhs(N - 1);
+    for (int t = 0; t < M; ++t) {
+        for (int i = 1; i < N; ++i) {
+            double j = static_cast<double>(i);
+            a[i - 1] = -0.5 * dt * (sigma * sigma * j * j - r * j);
+            b[i - 1] = 1.0 + dt * (sigma * sigma * j * j + r);
+            c[i - 1] = -0.5 * dt * (sigma * sigma * j * j + r * j);
+            rhs[i - 1] = V[i];
+        }
+
+        std::vector<double> Vnew = solve_tridiagonal(a, b, c, rhs);
+        for (int i = 1; i < N; ++i)
+            V[i] = std::max(Vnew[i - 1], 0.0);
+
+        double t_curr = (t + 1) * dt;
+        V[0] = isCall ? 0.0 : K * std::exp(-r * (T - t_curr));
+        V[N] = isCall ? (Smax - K * std::exp(-r * (T - t_curr))) : 0.0;
+    }
+
+    return V;
+}
+
+double fdm_compact(int N, int M, double Smax, double T, double K,
+                   double r, double sigma, bool isCall, double S0) {
+    std::vector<double> V = fdm_compact_vector(N, M, Smax, T, K, r, sigma, isCall);
+    double dS = Smax / N;
+    std::vector<double> S(N + 1);
+    for (int i = 0; i <= N; ++i)
+        S[i] = i * dS;
+    return interpolate_result(V, S, S0);
+
+
+}// ======= Binomial Tree Vector Method =======
+std::vector<double> binomial_tree_vector(int N, double T, double K,
+                                         double r, double sigma, bool isCall,
+                                         bool isAmerican, double S0, double /*Smax*/) {
+    double dt = T / N;
+    double u = std::exp(sigma * std::sqrt(dt));
+    double d = 1.0 / u;
+    double p = (std::exp(r * dt) - d) / (u - d);
+
+    std::vector<double> option(N + 1);
+    double S;
+
+    // Terminal payoff at maturity
+    for (int i = 0; i <= N; ++i) {
+        S = S0 * std::pow(u, N - i) * std::pow(d, i);
+        option[i] = isCall ? std::max(S - K, 0.0) : std::max(K - S, 0.0);
+    }
+
+    // Backward induction
+    for (int t = N - 1; t >= 0; --t) {
+        for (int i = 0; i <= t; ++i) {
+            S = S0 * std::pow(u, t - i) * std::pow(d, i);
+            option[i] = std::exp(-r * dt) * (p * option[i] + (1 - p) * option[i + 1]);
+
+            if (isAmerican) {
+                double intrinsic = isCall ? std::max(S - K, 0.0) : std::max(K - S, 0.0);
+                option[i] = std::max(option[i], intrinsic); // Early exercise
+            }
+        }
+    }
+
+    return option;
+}
+
+// ======= Binomial Tree Price (Scalar Result) =======
+double binomial_tree(int N, double T, double K,
+                           double r, double sigma, bool isCall,
+                           bool isAmerican, double S0) {
+    std::vector<double> option = binomial_tree_vector(N, T, K, r, sigma, isCall, isAmerican, S0, 0.0);
+    return option[0]; // Final price at root node
+}
+
+std::vector<std::vector<double>> fdm_american_psor_vector(int N, int M, double Smax, double T, double K,
+                                                          double r, double sigma, bool isCall,
+                                                          double omega, int maxIter, double tol) {
+    double dS = Smax / N;
+    double dt = T / M;
+
+    std::vector<double> S(N + 1), V(N + 1);
+    std::vector<std::vector<double>> V_hist(M + 1, std::vector<double>(N + 1));
+
+    for (int i = 0; i <= N; ++i) {
+        S[i] = i * dS;
+        V[i] = isCall ? std::max(S[i] - K, 0.0) : std::max(K - S[i], 0.0);
+    }
+    V_hist[M] = V;
+
+    std::vector<double> a(N - 1), b(N - 1), c(N - 1), rhs(N - 1);
+    for (int t = M - 1; t >= 0; --t) {
+        double t_curr = t * dt;
+        for (int i = 1; i < N; ++i) {
+            double j = static_cast<double>(i);
+            a[i - 1] = -0.5 * dt * (sigma*sigma*j*j - r*j);
+            b[i - 1] = 1 + dt * (sigma*sigma*j*j + r);
+            c[i - 1] = -0.5 * dt * (sigma*sigma*j*j + r*j);
+            rhs[i - 1] = V[i];
+        }
+
+        for (int k = 0; k < maxIter; ++k) {
+            double error = 0.0;
+            for (int i = 1; i < N; ++i) {
+                double j = i - 1;
+                double y = (j > 0 ? a[j] * V[i - 1] : 0.0)
+                         + b[j] * V[i]
+                         + (j < N - 2 ? c[j] * V[i + 1] : 0.0)
+                         - rhs[j];
+                double Vnew = V[i] - omega * y / b[j];
+                double payoff = isCall ? std::max(S[i] - K, 0.0) : std::max(K - S[i], 0.0);
+                Vnew = std::max(Vnew, payoff);
+                error += std::abs(Vnew - V[i]);
+                V[i] = Vnew;
+            }
+            if (error < tol)
+                break;
+        }
+        V[0] = isCall ? 0.0 : K * std::exp(-r * (T - t_curr));
+        V[N] = isCall ? (Smax - K * std::exp(-r * (T - t_curr))) : 0.0;
+        V_hist[t] = V;
+    }
+    return V_hist;
+}
+
+std::vector<std::vector<double>> fdm_time_fractional_vector(int N, int M, double Smax, double T, double K,
+                                                            double r, double sigma, bool isCall, double beta) {
+    if (beta <= 0.0 || beta >= 1.0) {
+        throw std::invalid_argument("beta must be in (0,1)");
+    }
+
+    double dS = Smax / N;
+    double dt = T / M;
+
+    std::vector<double> V(N + 1), V_new(N + 1), S(N + 1);
+    std::vector<std::vector<double>> V_hist(M + 1, std::vector<double>(N + 1));
+    std::vector<double> weights(M + 1, 0.0);
+
+    for (int i = 0; i <= N; ++i) {
+        S[i] = i * dS;
+        V[i] = isCall ? std::max(S[i] - K, 0.0) : std::max(K - S[i], 0.0);
+        V_hist[0][i] = V[i];
+    }
+
+    weights[0] = 1.0;
+    for (int k = 1; k <= M; ++k) {
+        weights[k] = weights[k - 1] * (1.0 - (1.0 + beta) / k);
+    }
+
+    for (int t = 1; t <= M; ++t) {
+        for (int i = 1; i < N; ++i) {
+            double d2V = (V[i - 1] - 2 * V[i] + V[i + 1]) / (dS * dS);
+            double dV = (V[i + 1] - V[i - 1]) / (2 * dS);
+
+            double frac_sum = 0.0;
+            for (int k = 1; k <= t; ++k) {
+                frac_sum += weights[k] * V_hist[t - k][i];
+            }
+
+            V_new[i] = V[i] + dt * (0.5 * sigma * sigma * S[i] * S[i] * d2V + r * S[i] * dV - r * V[i])
+                       + (pow(dt, -beta) / tgamma(2 - beta)) * frac_sum;
+
+            if (V_new[i] < 0.0) V_new[i] = 0.0;
+        }
+
+        V_new[0] = isCall ? 0.0 : K * std::exp(-r * (T - t * dt));
+        V_new[N] = isCall ? (Smax - K * std::exp(-r * (T - t * dt))) : 0.0;
+
+        V = V_new;
+        V_hist[t] = V;
+    }
+
+    return V_hist;
+}
+
+std::vector<std::vector<double>> fdm_exponential_integral_vector(int N, double Smax, double T, double K,
+                                                                  double r, double sigma, bool isCall) {
+    double dS = Smax / N;
+    double dt = 0.01;
+    int M = static_cast<int>(T / dt);
+
+    std::vector<double> V(N + 1), V_new(N + 1), rhs(N + 1), S(N + 1);
+    std::vector<std::vector<double>> V_hist(M + 1, std::vector<double>(N + 1));
+
+    for (int i = 0; i <= N; ++i) {
+        S[i] = i * dS;
+        V[i] = isCall ? std::max(S[i] - K, 0.0) : std::max(K - S[i], 0.0);
+    }
+    V_hist[0] = V;
+
+    for (int t = 1; t <= M; ++t) {
+        for (int i = 1; i < N; ++i) {
+            double d2V = (V[i - 1] - 2 * V[i] + V[i + 1]) / (dS * dS);
+            double dV = (V[i + 1] - V[i - 1]) / (2 * dS);
+            rhs[i] = 0.5 * sigma*sigma*S[i]*S[i]*d2V + r*S[i]*dV - r*V[i];
+        }
+        for (int i = 1; i < N; ++i) {
+            V_new[i] = V[i] + dt * rhs[i];
+            if (V_new[i] < 0.0) V_new[i] = 0.0;
+        }
+        V_new[0] = isCall ? 0.0 : K * std::exp(-r * (T - t * dt));
+        V_new[N] = isCall ? (Smax - K * std::exp(-r * (T - t * dt))) : 0.0;
+
+        V = V_new;
+        V_hist[t] = V;
+    }
+    return V_hist;
+}
+
+std::vector<std::vector<double>> binomial_tree_surface(int N, double T, double K,
+                                                       double r, double sigma, bool is_call,
+                                                       bool is_american, double S0) {
+    double dt = T / N;
+    double u = std::exp(sigma * std::sqrt(dt));
+    double d = 1.0 / u;
+    double p = (std::exp(r * dt) - d) / (u - d);
+
+    std::vector<std::vector<double>> surface(N + 1, std::vector<double>(N + 1));
+
+    // Terminal nodes
+    for (int i = 0; i <= N; ++i) {
+        double S = S0 * std::pow(u, N - i) * std::pow(d, i);
+        surface[N][i] = is_call ? std::max(S - K, 0.0) : std::max(K - S, 0.0);
+    }
+
+    // Backward iteration
+    for (int t = N - 1; t >= 0; --t) {
+        for (int i = 0; i <= t; ++i) {
+            double S = S0 * std::pow(u, t - i) * std::pow(d, i);
+            double cont_val = std::exp(-r * dt) * (p * surface[t + 1][i] + (1 - p) * surface[t + 1][i + 1]);
+            double intrinsic = is_call ? std::max(S - K, 0.0) : std::max(K - S, 0.0);
+            surface[t][i] = is_american ? std::max(cont_val, intrinsic) : cont_val;
+        }
+    }
+
+    return surface;
+}
+
+std::vector<std::vector<double>> exponential_integral_surface(
+    int N, int M, double Smax, double T,
+    double K, double r, double sigma,
+    bool isCall
+) {
+    double dS = Smax / N;
+    double dt = T / M;
+    std::vector<double> S(N + 1);
+    for (int i = 0; i <= N; ++i) S[i] = i * dS;
+
+    std::vector<std::vector<double>> grid(M + 1, std::vector<double>(N + 1));
+    for (int i = 0; i <= N; ++i) {
+        grid[M][i] = isCall ? std::max(S[i] - K, 0.0) : std::max(K - S[i], 0.0);
+    }
+
+    for (int j = M - 1; j >= 0; --j) {
+        for (int i = 1; i < N; ++i) {
+            double alpha = 0.5 * sigma * sigma * i * i;
+            double beta = 0.5 * r * i;
+            double gamma = r;
+
+            grid[j][i] = grid[j + 1][i] +
+                         dt * (alpha * (grid[j + 1][i + 1] - 2 * grid[j + 1][i] + grid[j + 1][i - 1]) / (dS * dS)
+                         + beta * (grid[j + 1][i + 1] - grid[j + 1][i - 1]) / (2 * dS)
+                         - gamma * grid[j + 1][i]);
+        }
+
+        grid[j][0] = isCall ? 0.0 : K * std::exp(-r * (T - j * dt));
+        grid[j][N] = isCall ? Smax - K * std::exp(-r * (T - j * dt)) : 0.0;
+    }
+
+    return grid;
+}
+
+std::vector<std::vector<double>> american_psor_surface(
+    int N, int M, double Smax, double T,
+    double K, double r, double sigma,
+    bool isCall, double omega, int maxIter, double tol
+) {
+    double dS = Smax / N;
+    double dt = T / M;
+    std::vector<double> S(N + 1);
+    for (int i = 0; i <= N; ++i) S[i] = i * dS;
+
+    std::vector<std::vector<double>> grid(M + 1, std::vector<double>(N + 1));
+    for (int i = 0; i <= N; ++i) {
+        grid[M][i] = isCall ? std::max(S[i] - K, 0.0) : std::max(K - S[i], 0.0);
+    }
+
+    std::vector<double> a(N - 1), b(N - 1), c(N - 1);
+    for (int i = 1; i < N; ++i) {
+        double sigma_sq = sigma * sigma;
+        a[i - 1] = -0.5 * dt * (sigma_sq * i * i - r * i);
+        b[i - 1] = 1 + dt * (sigma_sq * i * i + r);
+        c[i - 1] = -0.5 * dt * (sigma_sq * i * i + r * i);
+    }
+
+    std::vector<double> V_old(N - 1), V_new(N - 1);
+    for (int j = M - 1; j >= 0; --j) {
+        for (int i = 1; i < N; ++i)
+            V_old[i - 1] = grid[j + 1][i];
+
+        for (int iter = 0; iter < maxIter; ++iter) {
+            for (int i = 1; i < N; ++i) {
+                int k = i - 1;
+                double rhs = a[k] * V_new[std::max(0, k - 1)] +
+                             b[k] * V_new[k] +
+                             c[k] * V_new[std::min(N - 2, k + 1)];
+                rhs = V_old[k] + (rhs - b[k] * V_new[k]);
+                V_new[k] = V_new[k] + omega * (rhs - V_new[k]);
+
+                double exercise = isCall ? std::max(S[i] - K, 0.0) : std::max(K - S[i], 0.0);
+                V_new[k] = std::max(V_new[k], exercise);
+            }
+
+            if (std::inner_product(V_old.begin(), V_old.end(), V_new.begin(), 0.0,
+                                   std::plus<>(), [](double x, double y) { return std::abs(x - y); }) < tol)
+                break;
+
+            V_old = V_new;
+        }
+
+        for (int i = 1; i < N; ++i) grid[j][i] = V_new[i - 1];
+        grid[j][0] = isCall ? 0.0 : K * std::exp(-r * (T - j * dt));
+        grid[j][N] = isCall ? Smax - K * std::exp(-r * (T - j * dt)) : 0.0;
+    }
+
+    return grid;
 }

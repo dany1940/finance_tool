@@ -81,7 +81,7 @@ async def run_crank(params: CommonParams):
         logger.exception("❌ Error in crank_nicolson_fdm")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/american", response_model=FDMResult)
+@router.post("/psor", response_model=FDMResult)
 async def run_american(params: AmericanParams):
     try:
         sigma = resolve_sigma(params)
@@ -134,13 +134,62 @@ async def run_exponential(params: CommonParams):
         logger.exception("❌ Error in exponential_integral_fdm")
         raise HTTPException(status_code=500, detail=str(e))
 
-# === Vector-returning FDM methods: return result vector and final price ===
+# === American PSOR Surface Endpoint ===
+@router.post("/psor_surface", response_model=SurfaceResult)
+async def fdm_psor_surface(params: SurfaceParams):
+    try:
+        logger.info("Running PSOR FDM surface...")
+        surface = fm.fdm_american_psor_vector(
+            params.N, params.M, params.Smax, params.T,
+            params.K, params.r, params.sigma, params.is_call,
+            params.omega, params.maxIter, params.tol
+        )
+        S_grid = [i * (params.Smax / params.N) for i in range(params.N + 1)]
+        t_grid = [i * (params.T / params.M) for i in range(params.M + 1)]
+        return {
+            "S_grid": S_grid,
+            "t_grid": t_grid,
+            "price_surface": surface
+        }
+    except Exception as e:
+        logger.error(f"PSOR FDM surface error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# === Exponential Integral Surface Endpoint ===
+@router.post("/exponential_surface", response_model=SurfaceResult)
+async def fdm_exponential_surface(params: SurfaceParams):
+    try:
+        logger.info("Running exponential integral FDM surface...")
+        surface = fm.fdm_exponential_integral_vector(
+            params.N, params.Smax, params.T, params.K,
+            params.r, params.sigma, params.is_call
+        )
+        S_grid = [i * (params.Smax / params.N) for i in range(params.N + 1)]
+        t_grid = [i * (params.T / params.M) for i in range(params.M + 1)]
+        return {
+            "S_grid": S_grid,
+            "t_grid": t_grid,
+            "price_surface": surface
+        }
+    except Exception as e:
+        logger.error(f"Exponential Integral FDM surface error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/compact", response_model=FDMResult)
-async def run_compact(params: CompactParams):
+async def run_compact(params: CommonParams):
     try:
-        result = await run_in_threadpool(fm.compact_fdm, V=params.V, dx=params.dx)
-        return wrap_result(result)
+        sigma = resolve_sigma(params)
+        rate = resolve_rate(params)
+        price = await run_in_threadpool(
+            fm.compact_fdm, # must match signature in your C++/pybind wrapper
+            params.N, params.M, params.Smax,
+            params.T, params.K, rate, sigma,
+            params.is_call,
+            params.S0
+        )
+        return FDMResult(result=[], final_price=price)
     except Exception as e:
         logger.exception("❌ Error in compact_fdm")
         raise HTTPException(status_code=500, detail=str(e))
@@ -242,17 +291,22 @@ async def crank_vector(params: CommonParams):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-
 # === Explicit Surface Endpoint ===
 @router.post("/explicit_surface", response_model=SurfaceResult)
 async def fdm_explicit_surface(params: SurfaceParams):
     try:
         logger.info("Running explicit FDM surface...")
-        result = fm.fdm_explicit_surface(
+        surface = fm.fdm_explicit_surface(
             params.N, params.M, params.Smax, params.T,
             params.K, params.r, params.sigma, params.is_call
         )
-        return {"surface": result}
+        S_grid = [i * (params.Smax / params.N) for i in range(params.N + 1)]
+        t_grid = [i * (params.T / params.M) for i in range(params.M + 1)]
+        return {
+            "S_grid": S_grid,
+            "t_grid": t_grid,
+            "price_surface": surface
+        }
     except Exception as e:
         logger.error(f"Explicit FDM surface error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -263,11 +317,17 @@ async def fdm_explicit_surface(params: SurfaceParams):
 async def fdm_implicit_surface(params: SurfaceParams):
     try:
         logger.info("Running implicit FDM surface...")
-        result = fm.fdm_implicit_surface(
+        surface = fm.fdm_implicit_surface(
             params.N, params.M, params.Smax, params.T,
             params.K, params.r, params.sigma, params.is_call
         )
-        return {"surface": result}
+        S_grid = [i * (params.Smax / params.N) for i in range(params.N + 1)]
+        t_grid = [i * (params.T / params.M) for i in range(params.M + 1)]
+        return {
+            "S_grid": S_grid,
+            "t_grid": t_grid,
+            "price_surface": surface
+        }
     except Exception as e:
         logger.error(f"Implicit FDM surface error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -278,11 +338,72 @@ async def fdm_implicit_surface(params: SurfaceParams):
 async def fdm_crank_surface(params: SurfaceParams):
     try:
         logger.info("Running crank-nicolson FDM surface...")
-        result = fm.fdm_crank_nicolson_surface(
+        surface = fm.fdm_crank_nicolson_surface(
             params.N, params.M, params.Smax, params.T,
             params.K, params.r, params.sigma, params.is_call
         )
-        return {"surface": result}
+        S_grid = [i * (params.Smax / params.N) for i in range(params.N + 1)]
+        t_grid = [i * (params.T / params.M) for i in range(params.M + 1)]
+        return {
+            "S_grid": S_grid,
+            "t_grid": t_grid,
+            "price_surface": surface
+        }
     except Exception as e:
         logger.error(f"Crank-Nicolson FDM surface error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
+@router.post("/binomial", response_model=FDMResult)
+async def binomial_scalar(params: AmericanParams):
+    try:
+        sigma = resolve_sigma(params)
+        rate = resolve_rate(params)
+        price = await run_in_threadpool(
+            fm.binomial_tree_price,
+            params.N, params.T, params.K, rate, sigma,
+            params.is_call, params.is_american, params.S0
+        )
+        return FDMResult(result=[], final_price=price)
+    except Exception as e:
+        logger.error(f"Binomial price error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/binomial_vector", response_model=VectorResult)
+async def binomial_vector(params: AmericanParams):
+    try:
+        sigma = resolve_sigma(params)
+        rate = resolve_rate(params)
+        vector = await run_in_threadpool(
+            fm.binomial_tree_vector,
+            params.N, params.T, params.K, rate, sigma,
+            params.is_call, params.is_american, params.S0, params.Smax
+        )
+        dS = params.Smax / params.N
+        S_grid = [i * dS for i in range(params.N + 1)]
+        final_price = vector[0] if vector else 0.0
+        return VectorResult(S_grid=S_grid, prices=vector, final_price=final_price)
+    except Exception as e:
+        logger.error(f"Binomial vector error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/binomial_surface", response_model=SurfaceResult)
+async def binomial_surface(params: SurfaceParams):
+    try:
+        logger.info("Running binomial tree surface...")
+        surface = fm.binomial_tree_surface(
+            params.N, params.M, params.T, params.K,
+            params.r, params.sigma, params.is_call,
+            params.is_american, params.S0
+        )
+        # S_grid is not linear; using multiplicative steps for realism
+        S_grid = [params.S0 * (1.05 ** (i - params.N // 2)) for i in range(params.N + 1)]
+        t_grid = [i * (params.T / params.M) for i in range(params.M + 1)]
+        return {"S_grid": S_grid, "t_grid": t_grid, "price_surface": surface}
+    except Exception as e:
+        logger.error(f"Binomial surface error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

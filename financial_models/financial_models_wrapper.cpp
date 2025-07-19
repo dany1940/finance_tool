@@ -117,6 +117,63 @@ PYBIND11_MODULE(financial_models_wrapper, m) {
       py::arg("K"), py::arg("r"), py::arg("sigma"),
       py::arg("is_call"), py::arg("rannacher_smoothing") = false);
     // ======= Dispatcher =======
+
+      // This function dispatches to the appropriate FDM method based on the string input
+    m.def("fdm_compact", &fdm_compact,
+          "Compact 4th-order Finite Difference method with interpolation",
+          py::arg("N"), py::arg("M"), py::arg("Smax"), py::arg("T"),
+          py::arg("K"), py::arg("r"), py::arg("sigma"),
+          py::arg("is_call"), py::arg("S0"));
+
+    m.def("fdm_compact_vector", &fdm_compact_vector,
+          "Compact 4th-order Finite Difference method returning full price vector",
+          py::arg("N"), py::arg("M"), py::arg("Smax"), py::arg("T"),
+          py::arg("K"), py::arg("r"), py::arg("sigma"),
+          py::arg("is_call"));
+
+
+    m.def("binomial_tree", &binomial_tree,
+      "Binomial tree method returning scalar price",
+      py::arg("N"), py::arg("T"), py::arg("K"),
+      py::arg("r"), py::arg("sigma"), py::arg("is_call"),
+      py::arg("is_american"), py::arg("S0"));
+
+    m.def("binomial_tree_vector", &binomial_tree_vector,
+            "Binomial tree method returning full price vector",
+            py::arg("N"), py::arg("T"), py::arg("K"),
+            py::arg("r"), py::arg("sigma"), py::arg("is_call"),
+            py::arg("is_american"), py::arg("S0"), py::arg("Smax") = 0.0);  // Smax dummy
+
+    m.def("fdm_american_psor_vector", &fdm_american_psor_vector,
+        "Returns surface (price grid) for American option via PSOR method",
+        py::arg("N"), py::arg("M"), py::arg("Smax"), py::arg("T"), py::arg("K"),
+        py::arg("r"), py::arg("sigma"), py::arg("isCall"),
+        py::arg("omega"), py::arg("maxIter"), py::arg("tol"));
+
+    m.def("fdm_exponential_integral_vector", &fdm_exponential_integral_vector,
+        "Returns surface (price grid) using exponential integral FDM scheme",
+        py::arg("N"), py::arg("Smax"), py::arg("T"), py::arg("K"),
+        py::arg("r"), py::arg("sigma"), py::arg("isCall"));
+
+
+// === Binomial Tree: Full surface ===
+      m.def("binomial_tree_surface", &binomial_tree_surface,
+            "Compute full binomial tree surface (time steps and nodes)",
+            py::arg("N"), py::arg("T"), py::arg("K"), py::arg("r"),
+            py::arg("sigma"), py::arg("is_call"), py::arg("is_american"),
+            py::arg("S0"));
+      m.def("american_psor_surface", &american_psor_surface,
+            "Generate price surface using American PSOR method",
+            py::arg("N"), py::arg("M"), py::arg("Smax"), py::arg("T"),
+            py::arg("K"), py::arg("r"), py::arg("sigma"),
+            py::arg("is_call"), py::arg("omega"),
+            py::arg("max_iter"), py::arg("tol"));
+
+      m.def("exponential_integral_surface", &exponential_integral_surface,
+            "Generate price surface using Exponential Integral method",
+            py::arg("N"), py::arg("M"), py::arg("Smax"), py::arg("T"),
+            py::arg("K"), py::arg("r"), py::arg("sigma"),
+            py::arg("is_call"));
     m.def("solve_fdm", &solve_fdm,
           "Dispatcher for FDM methods returning interpolated price at S0",
           py::arg("method"),

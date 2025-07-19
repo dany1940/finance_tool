@@ -104,4 +104,53 @@ std::vector<std::vector<double>> fdm_crank_nicolson_surface(
     bool rannacher_smoothing
 );
 
+
+std::vector<double> fdm_compact_vector(int N, int M, double Smax, double T, double K,
+                                       double r, double sigma, bool isCall);
+
+double fdm_compact(int N, int M, double Smax, double T, double K,
+                   double r, double sigma, bool isCall, double S0);
+
+
+std::vector<double> binomial_tree_vector(int N, double T, double K,
+                                         double r, double sigma, bool isCall,
+                                         bool isAmerican, double S0, double Smax);
+
+
+double binomial_tree(int N, double T, double K,
+                           double r, double sigma, bool isCall,
+                           bool isAmerican, double S0);
+
+std::vector<std::vector<double>> fdm_time_fractional_vector(
+    int N, int M, double Smax, double T, double K,
+    double r, double sigma, bool isCall, double beta);
+
+std::vector<std::vector<double>> fdm_american_psor_vector(int N, int M, double Smax, double T, double K,
+                                                          double r, double sigma, bool isCall,
+                                                          double omega, int maxIter, double tol);
+
+std::vector<std::vector<double>> fdm_time_fractional_vector(int N, int M, double Smax, double T, double K,
+                                                            double r, double sigma, bool isCall, double beta);
+std::vector<std::vector<double>> fdm_exponential_integral_vector(int N, double Smax, double T, double K,
+                                                                  double r, double sigma, bool isCall) ;
+
+
+std::vector<std::vector<double>> binomial_tree_surface(int N, double T, double K,
+                                                       double r, double sigma, bool is_call,
+                                                       bool is_american, double S0);
+
+std::vector<std::vector<double>> american_psor_surface(
+    int N, int M, double Smax, double T,
+    double K, double r, double sigma,
+    bool isCall, double omega, int maxIter, double tol
+);
+std::vector<std::vector<double>> exponential_integral_surface(
+    int N, int M, double Smax, double T,
+    double K, double r, double sigma,
+    bool isCall
+);
+
 #endif // FINITE_DIFFERENCE_ALL_H
+
+
+

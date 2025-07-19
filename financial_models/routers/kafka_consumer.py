@@ -20,6 +20,7 @@ consumer = Consumer(consumer_conf)
 
 shutdown_event = asyncio.Event() # Shutdown event for graceful stop
 
+
 async def save_to_db(data: dict, db_session):
     """
     Save stock data to the database, choosing between Binance and Coinbase based on the 'exchange' field
