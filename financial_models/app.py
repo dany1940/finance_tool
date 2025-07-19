@@ -1,12 +1,14 @@
 # app.py
 
 import logging
+
 from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
 from nicegui import ui
-from routers.spark_processor import router as spark_router
-from routers.finite_diff_endpoints import router as fdm_router
+
 import fdm_gui  # This will automatically call fdm_gui layout
+from routers.finite_diff_endpoints import router as fdm_router
+from routers.spark_processor import router as spark_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -17,7 +19,7 @@ app = FastAPI(
     version="1.1",
     docs_url="/docs",
     redoc_url="/redoc",
-    openapi_url="/openapi.json"
+    openapi_url="/openapi.json",
 )
 
 # Mount FastAPI routers
@@ -30,7 +32,12 @@ app.mount("/downloads", StaticFiles(directory="downloads"), name="downloads")
 
 # WebSocket endpoint
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket) -> None:
+    """
+    WebSocket endpoint for real-time communication.
+    Accepts incoming messages and sends back an acknowledgment.
+    """
+    logger.info("🔗 WebSocket connection established")
     await websocket.accept()
     try:
         while True:
@@ -39,5 +46,6 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.send_text(f"ACK: {data}")
     except Exception as e:
         logger.error(f"❌ WebSocket Error: {e}", exc_info=True)
+
 
 ui.run_with(app, title="Real-Time Stock Data API")

@@ -40,6 +40,7 @@ double cubic_spline_interpolate(const std::vector<double>& x, const std::vector<
     return a[i] + b[i] * dx + c[i] * dx * dx + d[i] * dx * dx * dx;
 }
 
+// ======= Interpolation Result =======
 double interpolate_result(const std::vector<double>& V, const std::vector<double>& S, double S0) {
     if (S0 <= S.front()) return V.front();
     if (S0 >= S.back()) return V.back();
@@ -63,6 +64,8 @@ std::vector<double> solve_tridiagonal(const std::vector<double>& a, const std::v
         x[i] = dp[i] - cp[i] * x[i + 1];
     return x;
 }
+
+// ======= Explicit FDM (vector output) =======
 std::vector<double> fdm_explicit_vector(int N, int M, double Smax, double T, double K,
                                        double r, double sigma, bool isCall) {
     double dS = Smax / N;
@@ -436,11 +439,8 @@ std::vector<double> fdm_crank_nicolson_vector(int N, int M, double Smax, double 
     return V;
 }
 
-// Assumes solve_tridiagonal is already implemented elsewhere
 
-// ==============================
 // === Explicit FDM Surface ====
-// ==============================
 std::vector<std::vector<double>> fdm_explicit_surface(
     int N, int M, double Smax, double T, double K,
     double r, double sigma, bool is_call) {
@@ -481,9 +481,8 @@ std::vector<std::vector<double>> fdm_explicit_surface(
     return surface;
 }
 
-// ==============================
+
 // === Implicit FDM Surface ====
-// ==============================
 std::vector<std::vector<double>> fdm_implicit_surface(
     int N, int M, double Smax, double T, double K,
     double r, double sigma, bool is_call) {
@@ -537,9 +536,8 @@ std::vector<std::vector<double>> fdm_implicit_surface(
     return surface;
 }
 
-// ==========================================
+
 // === Crank-Nicolson FDM Surface ==========
-// ==========================================
 std::vector<std::vector<double>> fdm_crank_nicolson_surface(
     int N, int M, double Smax, double T, double K,
     double r, double sigma, bool is_call, bool rannacher_smoothing) {
@@ -938,4 +936,68 @@ std::vector<std::vector<double>> american_psor_surface(
     }
 
     return grid;
+}
+
+// American PSOR Solver for Option Pricing
+std::vector<double> american_psor_vector(
+    int N, int M, double Smax, double T,
+    double K, double r, double sigma, bool is_call,
+    double omega, int maxIter, double tol)
+{
+    double dS = Smax / N;
+    double dt = T / M;
+
+    std::vector<double> S(N + 1);
+    for (int i = 0; i <= N; ++i)
+        S[i] = i * dS;
+
+    std::vector<double> V(N + 1);         // Option value
+    std::vector<double> payoff(N + 1);    // Early exercise payoff
+
+    // Set terminal condition
+    for (int i = 0; i <= N; ++i)
+        payoff[i] = is_call ? std::max(S[i] - K, 0.0) : std::max(K - S[i], 0.0);
+
+    V = payoff;
+
+    std::vector<double> a(N + 1), b(N + 1), c(N + 1);
+
+    // Coefficients for the tridiagonal matrix
+    for (int i = 1; i < N; ++i)
+    {
+        double sigma2 = sigma * sigma;
+        a[i] = 0.5 * dt * (sigma2 * i * i - r * i);
+        b[i] = 1.0 + dt * (sigma2 * i * i + r);
+        c[i] = 0.5 * dt * (-(sigma2 * i * i + r * i));
+    }
+
+    // PSOR time-stepping loop
+    for (int t = M - 1; t >= 0; --t)
+    {
+        std::vector<double> V_old = V;
+        for (int iter = 0; iter < maxIter; ++iter)
+        {
+            double error = 0.0;
+            for (int i = 1; i < N; ++i)
+            {
+                double rhs = a[i] * V[i - 1] + (1.0 - b[i]) * V[i] + c[i] * V[i + 1];
+                double V_new = V[i] + omega * (rhs - V[i]) / b[i];
+
+                // American constraint: early exercise condition
+                V_new = std::max(V_new, payoff[i]);
+
+                error += std::abs(V_new - V[i]);
+                V[i] = V_new;
+            }
+
+            if (error < tol)
+                break;
+        }
+
+        // Boundary conditions
+        V[0] = is_call ? 0.0 : K * std::exp(-r * (T - t * dt));
+        V[N] = is_call ? (Smax - K * std::exp(-r * (T - t * dt))) : 0.0;
+    }
+
+    return V;
 }

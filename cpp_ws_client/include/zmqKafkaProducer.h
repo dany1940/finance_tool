@@ -13,7 +13,7 @@ using namespace std;
 using namespace chrono;
 using namespace nlohmann;
 
-
+// ZMQKafkaProducer class definition
 class ZMQKafkaProducer {
 public:
     ZMQKafkaProducer();

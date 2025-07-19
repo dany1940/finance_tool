@@ -154,6 +154,11 @@ std::vector<std::vector<double>> exponential_integral_surface(
 std::vector<double> fdm_implicit_vector(int N, int M, double Smax, double T, double K,
                                        double r, double sigma, bool isCall);
 
+std::vector<double> american_psor_vector(
+    int N, int M, double Smax, double T,
+    double K, double r, double sigma, bool is_call,
+    double omega, int maxIter, double tol);
+
 #endif // FINITE_DIFFERENCE_ALL_H
 
 

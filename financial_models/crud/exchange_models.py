@@ -1,5 +1,7 @@
-from pydantic import BaseModel
 from typing import List, Optional
+
+from pydantic import BaseModel
+
 
 class YahooExchange(BaseModel):
     Date: str
@@ -12,6 +14,7 @@ class YahooExchange(BaseModel):
 
     class Config:
         orm_mode = True  # To make it compatible with ORM models (optional)
+
 
 class YahooExchangeSummary(BaseModel):
     statistic: List[str]
@@ -36,5 +39,3 @@ class StockDataResponse(BaseModel):
     status: str
     message: Optional[str] = None
     data: YahooExchangeSummary
-
-

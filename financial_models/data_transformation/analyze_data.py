@@ -1,8 +1,10 @@
-from pyspark.sql import SparkSession
 import logging
+
+from pyspark.sql import SparkSession
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 def get_spark_session():
     return SparkSession.builder.appName("StockAnalysis").getOrCreate()
@@ -13,6 +15,11 @@ def estimate_data_size(df):
 
 
 def analyze_stock_data(df):
+    """
+    Analyze stock data using Polars or Apache Spark based on dataset size.
+    If the dataset has more than 50,000 rows, use Spark for processing.
+    Otherwise, use Polars for lightweight processing.
+    """
     data_size = estimate_data_size(df)
 
     if data_size >= 50000:

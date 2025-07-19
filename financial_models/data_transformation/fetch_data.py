@@ -1,15 +1,14 @@
 import asyncio
-import yfinance as yf
-import requests
 import logging
+
+import pandas as pd
 import polars as pl
 import pyarrow as pa
-import pandas as pd
-from data_transformation.cache_manager import get_cached_data, cache_data
+import requests
+import yfinance as yf
 from fastapi import HTTPException
 
-
-
+from data_transformation.cache_manager import cache_data, get_cached_data
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -77,7 +76,9 @@ async def fetch_polygon_data(tickers: list, start: str, end: str):
                 all_data.append(record)
 
     if not all_data:
-        raise HTTPException(status_code=404, detail="No data found for requested stocks")
+        raise HTTPException(
+            status_code=404, detail="No data found for requested stocks"
+        )
 
     pl_df = pl.DataFrame(all_data)
     cache_data(cache_key, pl_df.to_dicts())  # Cache result

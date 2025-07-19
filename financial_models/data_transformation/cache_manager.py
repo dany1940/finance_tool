@@ -1,7 +1,8 @@
-import redis
 import json
 import logging
 from datetime import timedelta
+
+import redis
 
 # Initialize Redis
 redis_client = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
@@ -10,12 +11,14 @@ redis_client = redis.Redis(host="localhost", port=6379, db=0, decode_responses=T
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 def cache_data(key: str, data: dict, ttl: int = 600):
     """
     Store stock data in Redis cache with a TTL (default: 10 minutes).
     """
     redis_client.setex(key, timedelta(seconds=ttl), json.dumps(data))
     logger.info(f"✅ Data cached: {key}")
+
 
 def get_cached_data(key: str):
     """

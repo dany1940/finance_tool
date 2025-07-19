@@ -1,6 +1,8 @@
-from typing import Dict, Any, List, Literal, Optional
-from pydantic import BaseModel, Field
 from datetime import date
+from typing import Any, Dict, List, Literal, Optional
+
+from pydantic import BaseModel, Field
+
 
 # === Summary Stats (Optional for Bootstrap) ===
 class StockAnalysisItem(BaseModel):
@@ -14,9 +16,11 @@ class StockAnalysisItem(BaseModel):
     percentile_75: float
     max: float
 
+
 class StockAnalysisResponse(BaseModel):
     summary: Dict[str, StockAnalysisItem]
     stock_data: List[Dict[str, Any]]
+
 
 # === Core FDM Request Parameters ===
 class CommonParams(BaseModel):
@@ -31,9 +35,8 @@ class CommonParams(BaseModel):
     cfl: Optional[bool] = False
     S0: Optional[float] = Field(None, description="Spot price")
     option_style: Optional[Literal["European", "American"]] = "European"
-    vol_source: Optional[Literal["User-defined",  "Implied"]] = "User-defined"
+    vol_source: Optional[Literal["User-defined", "Implied"]] = "User-defined"
     grid_scheme: Optional[Literal["uniform", "adaptive"]] = "uniform"
-
 
 
 # === American PSOR ===
@@ -41,19 +44,30 @@ class AmericanParams(CommonParams):
     omega: float = Field(1.2, gt=0)
     maxIter: int = Field(10000, gt=0)
     tol: float = Field(1e-6, gt=0)
+    is_american: bool = Field(
+        True, description="Set to True for American options, False for European options"
+    )
+
+
+class BinamialParams(AmericanParams):
+    pass
+
 
 # === Fractional FDM ===
 class FractionalParams(CommonParams):
     beta: float = Field(0.5, gt=0, le=1)
+
 
 # === Compact Derivative ===
 class CompactParams(BaseModel):
     V: List[float]
     dx: float = Field(0.1, gt=0)
 
+
 # === Dispatcher FDM ===
 class DispatcherParams(CommonParams):
     method: Literal["explicit", "implicit", "crank", "exponential"] = Field("crank")
+
 
 # === Bootstrap Parameters ===
 class BootstrapParams(BaseModel):
@@ -70,9 +84,10 @@ class BootstrapParams(BaseModel):
                 "start_date": "2023-01-01",
                 "end_date": "2023-12-31",
                 "num_samples": 1000,
-                "confidence_levels": [0.95, 0.99]
+                "confidence_levels": [0.95, 0.99],
             }
         }
+
 
 # === Bootstrap Output ===
 class BootstrapResult(BaseModel):
@@ -82,14 +97,17 @@ class BootstrapResult(BaseModel):
     var_95: float
     var_99: float
 
+
 # === FDM Output ===
 class ResultItem(BaseModel):
     index: int
     value: float
 
+
 class FDMResult(BaseModel):
     result: List[ResultItem]
     final_price: float
+
 
 class BlackScholesParams(BaseModel):
     S: float = Field(..., description="Spot price")
@@ -108,8 +126,9 @@ class VectorResult(BaseModel):
 
 
 class ResponseBlackscholes(BaseModel):
-    price: float = Field(..., description="Calculated option price using Black-Scholes formula")
-
+    price: float = Field(
+        ..., description="Calculated option price using Black-Scholes formula"
+    )
 
 
 # === Request & Response Models ===
@@ -122,6 +141,36 @@ class SurfaceParams(BaseModel):
     r: float
     sigma: float
     is_call: bool
+
+
+class PSORSurfaceParams(BaseModel):
+    N: int
+    M: int
+    T: float
+    K: float
+    r: float
+    sigma: float
+    is_call: bool
+    is_american: bool
+    Smax: float
+    S0: float
+    omega: float = Field(1.2, gt=0)
+    maxIter: int = Field(10000, gt=0)
+    tol: float = Field(1e-6, gt=0)
+    is_american: bool = Field(
+        True, description="Set to True for American options, False for European options"
+    )
+
+
+class BinomialSurfaceParams(BaseModel):
+    N: int
+    T: float
+    K: float
+    r: float
+    sigma: float
+    is_call: bool
+    is_american: bool
+    S0: float
 
 
 class SurfaceResult(BaseModel):

@@ -1,14 +1,16 @@
 import asyncio
 import json
 import logging
+
 from confluent_kafka import Consumer
 from fastapi import APIRouter
+
 from models import BinanceModel, CoinbaseModel
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/kafka", tags=["Kafka"]) # Define FastAPI router
+router = APIRouter(prefix="/kafka", tags=["Kafka"])  # Define FastAPI router
 
 # Kafka Consumer Configuration
 consumer_conf = {
@@ -18,10 +20,10 @@ consumer_conf = {
 }
 consumer = Consumer(consumer_conf)
 
-shutdown_event = asyncio.Event() # Shutdown event for graceful stop
+shutdown_event = asyncio.Event()  # Shutdown event for graceful stop
 
 
-async def save_to_db(data: dict, db_session):
+async def save_to_db(data: dict, db_session) -> None:
     """
     Save stock data to the database, choosing between Binance and Coinbase based on the 'exchange' field
     """
@@ -33,8 +35,7 @@ async def save_to_db(data: dict, db_session):
             data = CoinbaseModel(
                 unique_id=data["uniqueId"],
                 symbol=data["product_id"],
-                trade_id=data["trade_id"]
-
+                trade_id=data["trade_id"],
             )
             logger.info(f"📥 Data saved to Coinbase table: {data}")
 
@@ -54,22 +55,24 @@ async def save_to_db(data: dict, db_session):
 
         else:
             logger.warning(f"⚠️ Unsupported exchange: {exchange_name}")
-        #db_session.add(data)
+        # db_session.add(data)
 
         await db_session.flush()
-        await db_session.commit() # Use await for async flush
+        await db_session.commit()  # Use await for async flush
 
     except Exception as e:
         logger.error(f"❌ Error saving to DB: {e}", exc_info=True)
         await db_session.rollback()
 
 
-async def consume_kafka_messages():
+async def consume_kafka_messages() -> None:
     """
     Asynchronously consume messages from Kafka and save them to PostgreSQL.
     Gracefully handle shutdown.
     """
-    consumer.subscribe(["binance_ticker", "coinbase_ticker"])  # Subscribe to both topics
+    consumer.subscribe(
+        ["binance_ticker", "coinbase_ticker"]
+    )  # Subscribe to both topics
 
     try:
         while True:
@@ -97,7 +100,7 @@ async def consume_kafka_messages():
 
 
 @router.get("/start-consumer")
-async def start_kafka_consumer():
+async def start_kafka_consumer() -> dict:
     """Start Kafka consumer in a background task."""
     if not shutdown_event.is_set():
         shutdown_event.clear()  # Ensure event is reset before starting
@@ -110,7 +113,7 @@ async def start_kafka_consumer():
 
 
 @router.get("/stop-consumer")
-async def stop_kafka_consumer():
+async def stop_kafka_consumer() -> dict:
     """Stop Kafka consumer by triggering the shutdown event."""
     shutdown_event.set()  # Signal shutdown
     await asyncio.sleep(2)  # Give some time for loop to exit

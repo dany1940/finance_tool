@@ -176,6 +176,20 @@ PYBIND11_MODULE(financial_models_wrapper, m) {
             py::arg("is_call"), py::arg("omega"),
             py::arg("max_iter"), py::arg("tol"));
 
+       m.def("american_psor_vector", &american_psor_vector,
+        py::arg("N"),
+        py::arg("M"),
+        py::arg("Smax"),
+        py::arg("T"),
+        py::arg("K"),
+        py::arg("r"),
+        py::arg("sigma"),
+        py::arg("is_call"),
+        py::arg("omega"),
+        py::arg("maxIter"),
+        py::arg("tol"),
+        "American option pricing using PSOR (vector output)");
+
       m.def("exponential_integral_surface", &exponential_integral_surface,
             "Generate price surface using Exponential Integral method",
             py::arg("N"), py::arg("M"), py::arg("Smax"), py::arg("T"),
