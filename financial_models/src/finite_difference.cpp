@@ -643,7 +643,9 @@ double fdm_compact(int N, int M, double Smax, double T, double K,
     return interpolate_result(V, S, S0);
 
 
-}// ======= Binomial Tree Vector Method =======
+}
+
+// ======= Binomial Tree Vector Method =======
 std::vector<double> binomial_tree_vector(int N, double T, double K,
                                          double r, double sigma, bool isCall,
                                          bool isAmerican, double S0, double /*Smax*/) {

@@ -150,6 +150,10 @@ std::vector<std::vector<double>> exponential_integral_surface(
     bool isCall
 );
 
+// Return full price vector at maturity for Implicit FDM
+std::vector<double> fdm_implicit_vector(int N, int M, double Smax, double T, double K,
+                                       double r, double sigma, bool isCall);
+
 #endif // FINITE_DIFFERENCE_ALL_H
 
 

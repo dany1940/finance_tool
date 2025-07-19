@@ -52,6 +52,12 @@ PYBIND11_MODULE(financial_models_wrapper, m) {
           py::arg("N"), py::arg("M"), py::arg("Smax"), py::arg("T"),
           py::arg("K"), py::arg("r"), py::arg("sigma"), py::arg("is_call"));
 
+     m.def("implict_fdm_vector", &fdm_implicit_vector,
+          "Explicit Finite Difference method returning full price vector",
+          py::arg("N"), py::arg("M"), py::arg("Smax"), py::arg("T"),
+          py::arg("K"), py::arg("r"), py::arg("sigma"), py::arg("is_call"));
+
+
 
 
     m.def("crank_nicolson_fdm_vector", &fdm_crank_nicolson_vector,
@@ -134,7 +140,7 @@ PYBIND11_MODULE(financial_models_wrapper, m) {
 
     m.def("binomial_tree", &binomial_tree,
       "Binomial tree method returning scalar price",
-      py::arg("N"), py::arg("T"), py::arg("K"),
+      py::arg("N"),  py::arg("T"), py::arg("K"),
       py::arg("r"), py::arg("sigma"), py::arg("is_call"),
       py::arg("is_american"), py::arg("S0"));
 
@@ -162,6 +168,7 @@ PYBIND11_MODULE(financial_models_wrapper, m) {
             py::arg("N"), py::arg("T"), py::arg("K"), py::arg("r"),
             py::arg("sigma"), py::arg("is_call"), py::arg("is_american"),
             py::arg("S0"));
+
       m.def("american_psor_surface", &american_psor_surface,
             "Generate price surface using American PSOR method",
             py::arg("N"), py::arg("M"), py::arg("Smax"), py::arg("T"),

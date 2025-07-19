@@ -1,12 +1,13 @@
+import logging
+import math
 from fastapi import APIRouter, HTTPException
 from starlette.concurrency import run_in_threadpool
 from typing import List, Dict
-import logging
 
 from crud.stock_analysis_models import (
     CommonParams, AmericanParams, FractionalParams, CompactParams,
     DispatcherParams, BootstrapParams, BootstrapResult, FDMResult, ResultItem,
-    BlackScholesParams, ResponseBlackscholes, VectorResult, SurfaceResult, SurfaceParams
+    BlackScholesParams, ResponseBlackscholes, VectorResult, SurfaceResult, SurfaceParams, PSORSurfaceParams, BinomialSurfaceParams
 )
 
 import financial_models_wrapper as fm
@@ -134,25 +135,26 @@ async def run_exponential(params: CommonParams):
         logger.exception("❌ Error in exponential_integral_fdm")
         raise HTTPException(status_code=500, detail=str(e))
 
-# === American PSOR Surface Endpoint ===
 @router.post("/psor_surface", response_model=SurfaceResult)
-async def fdm_psor_surface(params: SurfaceParams):
+async def fdm_psor_surface(params: PSORSurfaceParams):
     try:
         logger.info("Running PSOR FDM surface...")
-        surface = fm.fdm_american_psor_vector(
+        surface = fm.american_psor_surface(
             params.N, params.M, params.Smax, params.T,
             params.K, params.r, params.sigma, params.is_call,
             params.omega, params.maxIter, params.tol
         )
         S_grid = [i * (params.Smax / params.N) for i in range(params.N + 1)]
         t_grid = [i * (params.T / params.M) for i in range(params.M + 1)]
+
         return {
             "S_grid": S_grid,
             "t_grid": t_grid,
             "price_surface": surface
         }
+
     except Exception as e:
-        logger.error(f"PSOR FDM surface error: {e}")
+        logger.error(f"❌ PSOR surface error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -254,14 +256,14 @@ async def explicit_vector(params: CommonParams):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# === Implicit FDM Vector Endpoint ===
+# === Implicit FDM Vector Endpoint === not impelmented
 @router.post("/implicit_vector", response_model=VectorResult)
 async def implicit_vector(params: CommonParams):
     try:
         sigma = resolve_sigma(params)
         rate = resolve_rate(params)
         vector = await run_in_threadpool(
-            fm.implicit_fdm_vector,
+            fm.implict_fdm_vector,
             params.N, params.M, params.Smax,
             params.T, params.K, rate, sigma,
             params.is_call
@@ -291,87 +293,176 @@ async def crank_vector(params: CommonParams):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# === Explicit Surface Endpoint ===
 @router.post("/explicit_surface", response_model=SurfaceResult)
 async def fdm_explicit_surface(params: SurfaceParams):
     try:
+        if params.N <= 0 or params.M <= 0:
+            raise ValueError("N and M must be positive integers.")
+        if params.Smax <= 0 or params.T <= 0:
+            raise ValueError("Smax and T must be positive.")
+        if params.K <= 0 or params.sigma < 0:
+            raise ValueError("Strike and volatility must be valid.")
+
         logger.info("Running explicit FDM surface...")
         surface = fm.fdm_explicit_surface(
             params.N, params.M, params.Smax, params.T,
             params.K, params.r, params.sigma, params.is_call
         )
-        S_grid = [i * (params.Smax / params.N) for i in range(params.N + 1)]
-        t_grid = [i * (params.T / params.M) for i in range(params.M + 1)]
+
+        dS = params.Smax / params.N
+        dt = params.T / params.M
+
+        S_grid = [i * dS for i in range(params.N + 1)]
+        t_grid = [i * dt for i in range(params.M + 1)]
+
+        # Sanitize surface
+        sanitized = [
+            [v if math.isfinite(v) else 0.0 for v in row]
+            for row in surface
+        ]
+
         return {
             "S_grid": S_grid,
             "t_grid": t_grid,
-            "price_surface": surface
+            "price_surface": sanitized
         }
+    except ZeroDivisionError:
+        logger.error("Division by zero in explicit surface calculation.")
+        raise HTTPException(status_code=400, detail="Division by zero.")
+    except ValueError as ve:
+        logger.error(f"Invalid explicit surface input: {ve}")
+        raise HTTPException(status_code=422, detail=str(ve))
     except Exception as e:
         logger.error(f"Explicit FDM surface error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Unexpected explicit surface error.")
 
 
-# === Implicit Surface Endpoint ===
+
 @router.post("/implicit_surface", response_model=SurfaceResult)
 async def fdm_implicit_surface(params: SurfaceParams):
     try:
+        if params.N <= 0 or params.M <= 0:
+            raise ValueError("N and M must be positive integers.")
+        if params.Smax <= 0 or params.T <= 0:
+            raise ValueError("Smax and T must be positive.")
+        if params.K <= 0 or params.sigma < 0:
+            raise ValueError("Strike and volatility must be valid.")
+
         logger.info("Running implicit FDM surface...")
         surface = fm.fdm_implicit_surface(
             params.N, params.M, params.Smax, params.T,
             params.K, params.r, params.sigma, params.is_call
         )
-        S_grid = [i * (params.Smax / params.N) for i in range(params.N + 1)]
-        t_grid = [i * (params.T / params.M) for i in range(params.M + 1)]
+
+        dS = params.Smax / params.N
+        dt = params.T / params.M
+
+        S_grid = [i * dS for i in range(params.N + 1)]
+        t_grid = [i * dt for i in range(params.M + 1)]
+
+        sanitized = [
+            [v if math.isfinite(v) else 0.0 for v in row]
+            for row in surface
+        ]
+
         return {
             "S_grid": S_grid,
             "t_grid": t_grid,
-            "price_surface": surface
+            "price_surface": sanitized
         }
+    except ZeroDivisionError:
+        logger.error("Division by zero in implicit surface calculation.")
+        raise HTTPException(status_code=400, detail="Division by zero.")
+    except ValueError as ve:
+        logger.error(f"Invalid implicit surface input: {ve}")
+        raise HTTPException(status_code=422, detail=str(ve))
     except Exception as e:
         logger.error(f"Implicit FDM surface error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Unexpected implicit surface error.")
 
 
-# === Crank-Nicolson Surface Endpoint ===
 @router.post("/crank_surface", response_model=SurfaceResult)
 async def fdm_crank_surface(params: SurfaceParams):
     try:
-        logger.info("Running crank-nicolson FDM surface...")
-        surface = fm.fdm_crank_nicolson_surface(
+        # Guard against invalid parameters early
+        if params.N <= 0 or params.M <= 0:
+            raise ValueError("N and M must be positive integers.")
+        if params.Smax <= 0 or params.T <= 0:
+            raise ValueError("Smax and T must be positive.")
+        if params.sigma < 0 or params.K <= 0:
+            raise ValueError("Sigma and Strike must be non-negative.")
+
+        logger.info(f"Running Crank-Nicolson FDM surface with: {params.dict()}")
+
+        surface = await run_in_threadpool(
+            fm.fdm_crank_nicolson_surface,
             params.N, params.M, params.Smax, params.T,
             params.K, params.r, params.sigma, params.is_call
         )
-        S_grid = [i * (params.Smax / params.N) for i in range(params.N + 1)]
-        t_grid = [i * (params.T / params.M) for i in range(params.M + 1)]
+
+        # Replace invalid float values in the surface
+        sanitized = [
+            [v if math.isfinite(v) else 0.0 for v in row]
+            for row in surface
+        ]
+
+        dS = params.Smax / params.N
+        dt = params.T / params.M
+
+        if not math.isfinite(dS) or not math.isfinite(dt) or dS <= 0 or dt <= 0:
+            raise ValueError("Computed grid steps (dS or dt) are invalid.")
+
+        S_grid = [i * dS for i in range(params.N + 1)]
+        t_grid = [j * dt for j in range(params.M + 1)]
+
         return {
             "S_grid": S_grid,
             "t_grid": t_grid,
-            "price_surface": surface
+            "price_surface": sanitized,
         }
+
+    except ZeroDivisionError:
+        logger.error("Division by zero in FDM surface calculation.")
+        raise HTTPException(status_code=400, detail="Division by zero encountered in FDM logic.")
+    except ValueError as ve:
+        logger.error(f"Invalid input for FDM surface: {ve}")
+        raise HTTPException(status_code=422, detail=str(ve))
     except Exception as e:
-        logger.error(f"Crank-Nicolson FDM surface error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Unexpected Crank-Nicolson error: {e}")
+        raise HTTPException(status_code=500, detail="Unexpected error in FDM surface calculation.")
 
 
-
-
+# === Binomial Tree Methods ===
 @router.post("/binomial", response_model=FDMResult)
 async def binomial_scalar(params: AmericanParams):
     try:
+        # === Input validation ===
+        if params.N <= 0 or params.T <= 0 or params.K <= 0 or params.S0 <= 0 or params.sigma <= 0:
+            raise HTTPException(status_code=400, detail="All inputs (N, T, K, S0, sigma) must be > 0")
+
         sigma = resolve_sigma(params)
         rate = resolve_rate(params)
+
         price = await run_in_threadpool(
-            fm.binomial_tree_price,
+            fm.binomial_tree,
             params.N, params.T, params.K, rate, sigma,
             params.is_call, params.is_american, params.S0
         )
+
+        # === Output validation ===
+        if math.isnan(price) or math.isinf(price):
+            raise HTTPException(status_code=500, detail="Model returned invalid numerical result (NaN or Inf)")
+
         return FDMResult(result=[], final_price=price)
+
+    except HTTPException:
+        raise  # re-raise HTTP exceptions as-is
     except Exception as e:
         logger.error(f"Binomial price error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error during binomial pricing.")
 
 
+# === Binomial Tree Vector Endpoint ===
 @router.post("/binomial_vector", response_model=VectorResult)
 async def binomial_vector(params: AmericanParams):
     try:
@@ -392,18 +483,25 @@ async def binomial_vector(params: AmericanParams):
 
 
 @router.post("/binomial_surface", response_model=SurfaceResult)
-async def binomial_surface(params: SurfaceParams):
+async def binomial_surface(params: BinomialSurfaceParams):
     try:
-        logger.info("Running binomial tree surface...")
+        if params.N <= 0:
+            raise HTTPException(status_code=400, detail="N must be > 0")
+
         surface = fm.binomial_tree_surface(
-            params.N, params.M, params.T, params.K,
-            params.r, params.sigma, params.is_call,
-            params.is_american, params.S0
+            params.N, params.T, params.K, params.r,
+            params.sigma, params.is_call, params.is_american, params.S0
         )
-        # S_grid is not linear; using multiplicative steps for realism
-        S_grid = [params.S0 * (1.05 ** (i - params.N // 2)) for i in range(params.N + 1)]
-        t_grid = [i * (params.T / params.M) for i in range(params.M + 1)]
-        return {"S_grid": S_grid, "t_grid": t_grid, "price_surface": surface}
+
+        S_grid = [params.S0 * (1 + i / params.N) for i in range(params.N + 1)]
+        t_grid = [params.T * (i / params.N) for i in range(params.N + 1)]
+
+        return {
+            "S_grid": S_grid,
+            "t_grid": t_grid,
+            "price_surface": surface
+        }
+
     except Exception as e:
         logger.error(f"Binomial surface error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
