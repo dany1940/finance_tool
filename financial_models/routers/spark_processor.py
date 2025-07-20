@@ -17,11 +17,15 @@ AVAILABLE_TICKERS = ["AAPL", "TSLA", "MSFT", "GOOGL", "AMZN"]
 AVAILABLE_SOURCES = ["yahoo", "polygon"]
 
 
-async def fetch_stock_data(tickers: List[str], source: str, start: str, end: str) -> List[YahooExchange]:
+async def fetch_stock_data(
+    tickers: List[str], source: str, start: str, end: str
+) -> List[YahooExchange]:
     """
     Fetch stock data from the specified source and return it as a list of YahooExchange objects.
     """
-    logger.info(f"Fetching stock data for {tickers} from {source.upper()} between {start} and {end}")
+    logger.info(
+        f"Fetching stock data for {tickers} from {source.upper()} between {start} and {end}"
+    )
     if source == "yahoo":
         return await fetch_yahoo_data(tickers, start, end)
     elif source == "polygon":

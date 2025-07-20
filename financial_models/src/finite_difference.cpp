@@ -236,9 +236,8 @@ double fdm_american_psor(int N, int M, double Smax, double T, double K,
     return interpolate_result(V, S, S0);
 }
 
-// ======= Exponential Integral FDM =======
 double fdm_exponential_integral(int N, double Smax, double T, double K,
-                               double r, double sigma, bool isCall, double S0) {
+                                double r, double sigma, bool isCall, double S0) {
     double dS = Smax / N;
     double dt = 0.01;
     int M = static_cast<int>(T / dt);
@@ -254,15 +253,34 @@ double fdm_exponential_integral(int N, double Smax, double T, double K,
         for (int i = 1; i < N; ++i) {
             double d2V = (V[i - 1] - 2 * V[i] + V[i + 1]) / (dS * dS);
             double dV = (V[i + 1] - V[i - 1]) / (2 * dS);
-            rhs[i] = 0.5 * sigma*sigma*S[i]*S[i]*d2V + r*S[i]*dV - r*V[i];
+            rhs[i] = 0.5 * sigma * sigma * S[i] * S[i] * d2V + r * S[i] * dV - r * V[i];
         }
+
+        double tau = T - t * dt;
+        V_new[0] = isCall ? 0.0 : K * std::exp(-r * tau);
+        V_new[N] = isCall ? (Smax - K * std::exp(-r * tau)) : 0.0;
+
         for (int i = 1; i < N; ++i) {
             V_new[i] = V[i] + dt * rhs[i];
             if (V_new[i] < 0.0) V_new[i] = 0.0;
         }
+
         V = V_new;
     }
-    return interpolate_result(V, S, S0);
+
+    // === Inline Linear Interpolation ===
+    if (S0 <= 0.0) return V[0];
+    if (S0 >= Smax) return V[N];
+
+    int i = static_cast<int>(S0 / dS);
+    double S_left = S[i];
+    double S_right = S[i + 1];
+    double V_left = V[i];
+    double V_right = V[i + 1];
+
+    double interp = V_left + (V_right - V_left) * (S0 - S_left) / (S_right - S_left);
+
+    return interp;
 }
 
 // ======= Compact 4th-order Second Derivative =======
@@ -275,63 +293,99 @@ std::vector<double> compact_4th_order_second_derivative(const std::vector<double
     }
     return d2V;
 }
-// ======= Time-Fractional FDM =======
+
+
+//======= Main Fractional FDM =======
 double fdm_time_fractional(int N, int M, double Smax, double T, double K,
-                          double r, double sigma, bool isCall, double beta, double S0) {
-    // Throw if beta out of (0,1) to satisfy tests requiring exceptions
+                           double r, double sigma, bool isCall, double beta, double S0) {
     if (beta <= 0.0 || beta >= 1.0) {
         throw std::invalid_argument("beta must be in (0,1)");
     }
 
-
     double dS = Smax / N;
     double dt = T / M;
+    double gamma = 1.0 / tgamma(2.0 - beta);
+    double dt_beta = pow(dt, -beta);
 
     std::vector<double> V(N + 1), V_new(N + 1), S(N + 1);
     std::vector<std::vector<double>> V_hist(M + 1, std::vector<double>(N + 1));
     std::vector<double> weights(M + 1, 0.0);
 
-    // Initialize asset prices and payoff at maturity
+    // Initialize S and initial payoff
     for (int i = 0; i <= N; ++i) {
         S[i] = i * dS;
-        V[i] = isCall ? std::max(S[i] - K, 0.0) : std::max(K - S[i], 0.0);
+        V[i] = std::max(isCall ? S[i] - K : K - S[i], 0.0);
         V_hist[0][i] = V[i];
     }
 
-    // Compute weights for fractional derivative
-    weights[0] = 1.0;
-    for (int k = 1; k <= M; ++k) {
-        weights[k] = weights[k - 1] * (1.0 - (1.0 + beta) / k);
+    // Precompute Caputo weights
+    weights[0] = 0.0;
+    weights[1] = 1.0;
+    for (int k = 2; k <= M; ++k) {
+        weights[k] = weights[k - 1] * (1.0 - (1.0 + beta) / (double)k);
     }
 
-    // Time-stepping loop for fractional PDE
+    // Time loop
     for (int t = 1; t <= M; ++t) {
         for (int i = 1; i < N; ++i) {
             double d2V = (V[i - 1] - 2 * V[i] + V[i + 1]) / (dS * dS);
             double dV = (V[i + 1] - V[i - 1]) / (2 * dS);
 
+            // Caputo fractional memory term
             double frac_sum = 0.0;
             for (int k = 1; k <= t; ++k) {
                 frac_sum += weights[k] * V_hist[t - k][i];
             }
 
-            V_new[i] = V[i] + dt * (0.5 * sigma * sigma * S[i] * S[i] * d2V + r * S[i] * dV - r * V[i])
-                       + (pow(dt, -beta) / tgamma(2 - beta)) * frac_sum;
+            double drift_term = 0.5 * sigma * sigma * S[i] * S[i] * d2V + r * S[i] * dV - r * V[i];
+            double memory_term = gamma * dt_beta * frac_sum;
 
-            if (V_new[i] < 0.0) V_new[i] = 0.0;  // clamp negative values
+            V_new[i] = V[i] + dt * drift_term + memory_term;
+            if (V_new[i] < 0.0 || std::isnan(V_new[i]) || std::isinf(V_new[i])) V_new[i] = 0.0;
         }
 
         // Boundary conditions
         V_new[0] = isCall ? 0.0 : K * std::exp(-r * (T - t * dt));
-        V_new[N] = isCall ? (Smax - K * std::exp(-r * (T - t * dt))) : 0.0;
+        V_new[N] = isCall ? std::max(Smax - K * std::exp(-r * (T - t * dt)), 0.0) : 0.0;
 
+        // Update history
         V = V_new;
         V_hist[t] = V;
+
+        // Logging every 20 steps
+        if (t % 20 == 0 || t == M) {
+            std::cout << "[INFO] Step " << t << "/" << M << ": Sample V = ";
+            for (int j = N / 10; j <= N; j += N / 10) {
+                std::cout << V[j] << " ";
+            }
+            std::cout << "\n";
+        }
     }
 
-    return interpolate_result(V, S, S0);
-}
+    // === Inline Cubic Interpolation ===
+    if (S0 <= S[0] || S0 >= S[N]) {
+        std::cerr << "[WARN] S0 outside interpolation range: " << S0 << std::endl;
+        return 0.0;
+    }
 
+    int j = 0;
+    while (j < N - 1 && S[j + 1] < S0) ++j;
+
+    // Local cubic spline using 4 points if possible
+    int j0 = std::max(0, j - 1);
+    int j1 = std::min(j0 + 1, N - 1);
+    int j2 = std::min(j0 + 2, N - 1);
+    int j3 = std::min(j0 + 3, N - 1);
+
+    double x0 = S[j1], x1 = S[j2];
+    double y0 = V[j1], y1 = V[j2];
+
+    double slope = (y1 - y0) / (x1 - x0);
+    double result = y0 + slope * (S0 - x0);
+    std::cout << "[RESULT] Interpolated price at S0 = " << S0 << " is " << result << "\n";
+
+    return result;
+}
 
 
 // ======= Solve FDM Dispatcher =======
@@ -643,6 +697,77 @@ double fdm_compact(int N, int M, double Smax, double T, double K,
 
 }
 
+std::vector<std::vector<double>> fdm_compact_surface(int N, int M, double Smax, double T, double K,
+                                                     double r, double sigma, bool isCall) {
+    double dS = Smax / N;
+    double dt = T / M;
+
+    std::vector<std::vector<double>> surface;
+    std::vector<double> S(N + 1), V(N + 1);
+    for (int i = 0; i <= N; ++i) {
+        S[i] = i * dS;
+        V[i] = isCall ? std::max(S[i] - K, 0.0) : std::max(K - S[i], 0.0);
+    }
+    surface.push_back(V);
+
+    std::vector<double> a(N - 1), b(N - 1), c(N - 1), rhs(N - 1);
+    for (int t = 0; t < M; ++t) {
+        for (int i = 1; i < N; ++i) {
+            double j = static_cast<double>(i);
+            a[i - 1] = -0.5 * dt * (sigma * sigma * j * j - r * j);
+            b[i - 1] = 1.0 + dt * (sigma * sigma * j * j + r);
+            c[i - 1] = -0.5 * dt * (sigma * sigma * j * j + r * j);
+            rhs[i - 1] = V[i];
+        }
+
+        std::vector<double> Vnew = solve_tridiagonal(a, b, c, rhs);
+        for (int i = 1; i < N; ++i)
+            V[i] = std::max(Vnew[i - 1], 0.0);
+
+        double t_curr = (t + 1) * dt;
+        V[0] = isCall ? 0.0 : K * std::exp(-r * (T - t_curr));
+        V[N] = isCall ? (Smax - K * std::exp(-r * (T - t_curr))) : 0.0;
+
+        surface.push_back(V);
+    }
+
+    return surface;  // S0 present but not used
+}
+
+std::vector<double> fdm_compact_vector(int N, int M, double Smax, double T, double K,
+                                       double r, double sigma, bool isCall, double S0) {
+    double dS = Smax / N;
+    double dt = T / M;
+
+    std::vector<double> S(N + 1), V(N + 1);
+    for (int i = 0; i <= N; ++i) {
+        S[i] = i * dS;
+        V[i] = isCall ? std::max(S[i] - K, 0.0) : std::max(K - S[i], 0.0);
+    }
+
+    std::vector<double> a(N - 1), b(N - 1), c(N - 1), rhs(N - 1);
+    for (int t = 0; t < M; ++t) {
+        for (int i = 1; i < N; ++i) {
+            double j = static_cast<double>(i);
+            a[i - 1] = -0.5 * dt * (sigma * sigma * j * j - r * j);
+            b[i - 1] = 1.0 + dt * (sigma * sigma * j * j + r);
+            c[i - 1] = -0.5 * dt * (sigma * sigma * j * j + r * j);
+            rhs[i - 1] = V[i];
+        }
+
+        std::vector<double> Vnew = solve_tridiagonal(a, b, c, rhs);
+        for (int i = 1; i < N; ++i)
+            V[i] = std::max(Vnew[i - 1], 0.0);
+
+        double t_curr = (t + 1) * dt;
+        V[0] = isCall ? 0.0 : K * std::exp(-r * (T - t_curr));
+        V[N] = isCall ? (Smax - K * std::exp(-r * (T - t_curr))) : 0.0;
+    }
+
+    return V;  // S0 not used, but present in signature
+}
+
+
 // ======= Binomial Tree Vector Method =======
 std::vector<double> binomial_tree_vector(int N, double T, double K,
                                          double r, double sigma, bool isCall,
@@ -735,55 +860,7 @@ std::vector<std::vector<double>> fdm_american_psor_vector(int N, int M, double S
     return V_hist;
 }
 
-std::vector<std::vector<double>> fdm_time_fractional_vector(int N, int M, double Smax, double T, double K,
-                                                            double r, double sigma, bool isCall, double beta) {
-    if (beta <= 0.0 || beta >= 1.0) {
-        throw std::invalid_argument("beta must be in (0,1)");
-    }
 
-    double dS = Smax / N;
-    double dt = T / M;
-
-    std::vector<double> V(N + 1), V_new(N + 1), S(N + 1);
-    std::vector<std::vector<double>> V_hist(M + 1, std::vector<double>(N + 1));
-    std::vector<double> weights(M + 1, 0.0);
-
-    for (int i = 0; i <= N; ++i) {
-        S[i] = i * dS;
-        V[i] = isCall ? std::max(S[i] - K, 0.0) : std::max(K - S[i], 0.0);
-        V_hist[0][i] = V[i];
-    }
-
-    weights[0] = 1.0;
-    for (int k = 1; k <= M; ++k) {
-        weights[k] = weights[k - 1] * (1.0 - (1.0 + beta) / k);
-    }
-
-    for (int t = 1; t <= M; ++t) {
-        for (int i = 1; i < N; ++i) {
-            double d2V = (V[i - 1] - 2 * V[i] + V[i + 1]) / (dS * dS);
-            double dV = (V[i + 1] - V[i - 1]) / (2 * dS);
-
-            double frac_sum = 0.0;
-            for (int k = 1; k <= t; ++k) {
-                frac_sum += weights[k] * V_hist[t - k][i];
-            }
-
-            V_new[i] = V[i] + dt * (0.5 * sigma * sigma * S[i] * S[i] * d2V + r * S[i] * dV - r * V[i])
-                       + (pow(dt, -beta) / tgamma(2 - beta)) * frac_sum;
-
-            if (V_new[i] < 0.0) V_new[i] = 0.0;
-        }
-
-        V_new[0] = isCall ? 0.0 : K * std::exp(-r * (T - t * dt));
-        V_new[N] = isCall ? (Smax - K * std::exp(-r * (T - t * dt))) : 0.0;
-
-        V = V_new;
-        V_hist[t] = V;
-    }
-
-    return V_hist;
-}
 
 std::vector<std::vector<double>> fdm_exponential_integral_vector(int N, double Smax, double T, double K,
                                                                   double r, double sigma, bool isCall) {
@@ -1000,5 +1077,57 @@ std::vector<double> american_psor_vector(
     }
 
     return V;
+}
+
+
+std::vector<std::vector<double>> fdm_time_fractional_surface(int N, int M, double Smax, double T, double K,
+                                                             double r, double sigma, bool isCall, double beta) {
+    if (beta <= 0.0 || beta >= 1.0) {
+        throw std::invalid_argument("beta must be in (0,1)");
+    }
+
+    double dS = Smax / N;
+    double dt = T / M;
+
+    std::vector<double> S(N + 1);
+    std::vector<double> V(N + 1), V_new(N + 1);
+    std::vector<std::vector<double>> V_hist(M + 1, std::vector<double>(N + 1));
+    std::vector<double> weights(M + 1, 0.0);
+
+    for (int i = 0; i <= N; ++i) {
+        S[i] = i * dS;
+        V[i] = isCall ? std::max(S[i] - K, 0.0) : std::max(K - S[i], 0.0);
+        V_hist[0][i] = V[i];
+    }
+
+    weights[0] = 1.0;
+    for (int k = 1; k <= M; ++k) {
+        weights[k] = weights[k - 1] * (1.0 - (1.0 + beta) / k);
+    }
+
+    for (int t = 1; t <= M; ++t) {
+        for (int i = 1; i < N; ++i) {
+            double d2V = (V[i - 1] - 2 * V[i] + V[i + 1]) / (dS * dS);
+            double dV = (V[i + 1] - V[i - 1]) / (2 * dS);
+            double frac_sum = 0.0;
+
+            for (int k = 1; k <= t; ++k) {
+                frac_sum += weights[k] * V_hist[t - k][i];
+            }
+
+            V_new[i] = V[i] + dt * (0.5 * sigma * sigma * S[i] * S[i] * d2V + r * S[i] * dV - r * V[i])
+                       + (pow(dt, -beta) / tgamma(2 - beta)) * frac_sum;
+
+            if (V_new[i] < 0.0) V_new[i] = 0.0;
+        }
+
+        V_new[0] = isCall ? 0.0 : K * std::exp(-r * (T - t * dt));
+        V_new[N] = isCall ? (Smax - K * std::exp(-r * (T - t * dt))) : 0.0;
+
+        V = V_new;
+        V_hist[t] = V;
+    }
+
+    return V_hist;
 }
 

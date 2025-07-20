@@ -74,16 +74,28 @@ with ui.row().classes("w-full justify-center"):
             ).classes("w-56 border border-gray-700")
 
         with ui.row().classes("gap-4"):
-            N = ui.number("N (Grid steps)", value=10).classes("w-56 border border-gray-700")
-            M = ui.number("M (Time steps)", value=10).classes("w-56 border border-gray-700")
+            N = ui.number("N (Grid steps)", value=10).classes(
+                "w-56 border border-gray-700"
+            )
+            M = ui.number("M (Time steps)", value=10).classes(
+                "w-56 border border-gray-700"
+            )
             Smax = ui.number("Smax", value=100).classes("w-56 border border-gray-700")
             K = ui.number("K (Strike)", value=50).classes("w-56 border border-gray-700")
         ## Market parameters
         with ui.row().classes("gap-4"):
-            r = ui.number("r (Interest rate)", value=0.05).classes("w-56 border border-gray-700")
-            sigma = ui.number("σ (Volatility)", value=0.2).classes("w-56 border border-gray-700")
-            omega = ui.number("ω (Relaxation)", value=1.2).classes("w-56 border border-gray-700")
-            S0 = ui.number("S₀ (Spot Price)", value=50.0).classes("w-56 border border-gray-700")
+            r = ui.number("r (Interest rate)", value=0.05).classes(
+                "w-56 border border-gray-700"
+            )
+            sigma = ui.number("σ (Volatility)", value=0.2).classes(
+                "w-56 border border-gray-700"
+            )
+            omega = ui.number("ω (Relaxation)", value=1.2).classes(
+                "w-56 border border-gray-700"
+            )
+            S0 = ui.number("S₀ (Spot Price)", value=50.0).classes(
+                "w-56 border border-gray-700"
+            )
         # Optional parameters for specific methods
         with ui.row().classes("gap-4"):
             datetime_start = (
@@ -96,25 +108,41 @@ with ui.row().classes("w-full justify-center"):
                 .props('placeholder="YYYY-MM-DD or YYYY-MM-DD HH:MM:SS"')
                 .classes("w-56 border border-gray-700")
             )
-            is_call = ui.toggle({True: "Call", False: "Put"}, value=True).classes("w-56 border border-gray-700")
-            cfl_toggle = ui.toggle({"off": "off", "on": "on"}, value="off").classes("w-56 border border-gray-700")
+            is_call = ui.toggle({True: "Call", False: "Put"}, value=True).classes(
+                "w-56 border border-gray-700"
+            )
+            cfl_toggle = ui.toggle({"off": "off", "on": "on"}, value="off").classes(
+                "w-56 border border-gray-700"
+            )
         # Optional parameters for specific methods
         with ui.row().classes("gap-4"):
-            tol = ui.number("Tolerance", value=1e-6).classes("w-56 border border-gray-700")
-            beta = ui.number("β (Fractional time)", value=0.8).classes("w-56 border border-gray-700")
-            dx = ui.number("dx (Compact dx)", value=1.0).classes("w-56 border border-gray-700")
+            tol = ui.number("Tolerance", value=1e-6).classes(
+                "w-56 border border-gray-700"
+            )
+            beta = ui.number("β (Fractional time)", value=0.8).classes(
+                "w-56 border border-gray-700"
+            )
+            dx = ui.number("dx (Compact dx)", value=1.0).classes(
+                "w-56 border border-gray-700"
+            )
             max_iter = (
-                ui.number("Max Iter", value=10000).props("step=100").classes("w-56 border border-gray-700")
+                ui.number("Max Iter", value=10000)
+                .props("step=100")
+                .classes("w-56 border border-gray-700")
             )
 
             def update_method_param_fields():
                 def mark_inactive(field):
                     field.enabled = False
-                    field.classes(remove="w-56 border-gray-700", add="w-56 border-red-500")
+                    field.classes(
+                        remove="w-56 border-gray-700", add="w-56 border-red-500"
+                    )
 
                 def mark_active(field):
                     field.enabled = True
-                    field.classes(remove="w-56 border-red-500", add="w-56 border-gray-700")
+                    field.classes(
+                        remove="w-56 border-red-500", add="w-56 border-gray-700"
+                    )
 
                 # PSOR fields
                 if method.value == "psor":
@@ -145,8 +173,17 @@ with ui.row().classes("w-full justify-center"):
                     mark_inactive(max_iter)
                     mark_inactive(beta)
                     mark_inactive(dx)
-            option_type.on("update:model-value", lambda e: update_method_options() or update_method_param_fields() or reset_outputs())
-            method.on("update:model-value", lambda e: update_method_param_fields() or reset_outputs())
+
+            option_type.on(
+                "update:model-value",
+                lambda e: update_method_options()
+                or update_method_param_fields()
+                or reset_outputs(),
+            )
+            method.on(
+                "update:model-value",
+                lambda e: update_method_param_fields() or reset_outputs(),
+            )
 
             update_method_options()
             update_method_param_fields()
@@ -263,13 +300,14 @@ async def compute_fdm():
                 # Optional safeguard: clamp absurd values (e.g., explosion due to instability)
 
                 diff = abs(final - bs_price)
-                
+
                 def smart_format(value: float) -> str:
                     if not isinstance(value, float):
                         return "NaN"
                     if abs(value) > 1e6 or abs(value) < 1e-3:
                         return f"{value:.2e}"
                     return f"{value:.4f}"
+
                 comparison_label.text = (
                     f"{method.value.capitalize()} vs Black-Scholes:\n"
                     f"FDM: {smart_format(final)} | BS: {smart_format(bs_price)} | Δ: {smart_format(diff)}"

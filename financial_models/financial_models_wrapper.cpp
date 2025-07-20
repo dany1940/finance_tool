@@ -131,12 +131,13 @@ PYBIND11_MODULE(financial_models_wrapper, m) {
           py::arg("K"), py::arg("r"), py::arg("sigma"),
           py::arg("is_call"), py::arg("S0"));
 
-    m.def("fdm_compact_vector", &fdm_compact_vector,
-          "Compact 4th-order Finite Difference method returning full price vector",
-          py::arg("N"), py::arg("M"), py::arg("Smax"), py::arg("T"),
-          py::arg("K"), py::arg("r"), py::arg("sigma"),
-          py::arg("is_call"));
+     m.def("compact_vector", &fdm_compact_vector,
+      py::arg("N"), py::arg("M"), py::arg("Smax"), py::arg("T"),
+      py::arg("K"), py::arg("r"), py::arg("sigma"), py::arg("isCall"), py::arg("S0"));
 
+     m.def("compact_surface", &fdm_compact_surface,
+      py::arg("N"), py::arg("M"), py::arg("Smax"), py::arg("T"),
+      py::arg("K"), py::arg("r"), py::arg("sigma"), py::arg("isCall"));
 
     m.def("binomial_tree", &binomial_tree,
       "Binomial tree method returning scalar price",

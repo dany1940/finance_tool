@@ -66,12 +66,8 @@ double fdm_exponential_integral(
     double S0
 );
 
-double fdm_time_fractional(
-    int N, int M, double Smax, double T, double K,
-    double r, double sigma, bool isCall,
-    double beta,
-    double S0
-);
+double fdm_time_fractional(int N, int M, double Smax, double T, double K,
+                          double r, double sigma, bool isCall, double beta, double S0);
 
 // ======= Compact 4th-order 2nd derivative (returns full vector) =======
 std::vector<double> compact_4th_order_second_derivative(
@@ -86,7 +82,7 @@ double solve_fdm(
     double beta, bool rannacher_smoothing,
     double S0
 );
-
+void log_vector(const std::string& name, const std::vector<double>& v, int limit = 10);
 // ===== Surface-returning FDM methods =====
 std::vector<std::vector<double>> fdm_explicit_surface(
     int N, int M, double Smax, double T, double K,
@@ -106,7 +102,10 @@ std::vector<std::vector<double>> fdm_crank_nicolson_surface(
 
 
 std::vector<double> fdm_compact_vector(int N, int M, double Smax, double T, double K,
-                                       double r, double sigma, bool isCall);
+                                       double r, double sigma, bool isCall, double S0);
+
+std::vector<std::vector<double>> fdm_compact_surface(int N, int M, double Smax, double T, double K,
+                                                     double r, double sigma, bool isCall);
 
 double fdm_compact(int N, int M, double Smax, double T, double K,
                    double r, double sigma, bool isCall, double S0);

@@ -1,12 +1,12 @@
 import logging
 import math
-
-import financial_models_wrapper as fm
 from typing import List
 
 import numpy as np
 from fastapi import APIRouter, HTTPException
 from starlette.concurrency import run_in_threadpool
+
+import financial_models_wrapper as fm
 from crud.stock_analysis_models import (
     AmericanParams,
     BinomialSurfaceParams,
@@ -189,7 +189,6 @@ async def run_fractional(params: FractionalParams) -> FDMResult:
             params.is_call,
             params.beta,
             params.S0,
-
         )
         return FDMResult(result=[], final_price=price)
     except Exception as e:
@@ -197,32 +196,6 @@ async def run_fractional(params: FractionalParams) -> FDMResult:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/exponential", response_model=FDMResult)
-async def run_exponential(params: CommonParams) -> FDMResult:
-    """
-    Run the exponential integral finite difference method for option pricing.
-    This method computes the option price using the exponential integral finite difference method
-    and returns the final price along with an empty result list.
-    """
-    logger.info("Running exponential_integral_fdm with parameters: %s", params)
-    try:
-        sigma = resolve_sigma(params)
-        rate = resolve_rate(params)
-        price = await run_in_threadpool(
-            fm.exponential_integral_fdm,
-            params.N,
-            params.Smax,
-            params.T,
-            params.K,
-            rate,
-            sigma,
-            params.is_call,
-            params.S0,
-        )
-        return FDMResult(result=[], final_price=price)
-    except Exception as e:
-        logger.exception("❌ Error in exponential_integral_fdm")
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/psor_surface", response_model=SurfaceResult)
@@ -280,60 +253,6 @@ async def fdm_psor_surface(params: PSORSurfaceParams) -> SurfaceResult:
         logger.error(f"❌ PSOR surface error: {e}")
         raise HTTPException(status_code=500, detail=f"PSOR surface error: {str(e)}")
 
-
-# === Exponential Integral Surface Endpoint ===
-@router.post("/exponential_surface", response_model=SurfaceResult)
-async def fdm_exponential_surface(params: SurfaceParams) -> SurfaceResult:
-    """
-    Run the exponential integral finite difference method for option pricing surface.
-    This method computes the option price surface using the exponential integral finite difference method
-    and returns the price surface along with the grid axes.
-    """
-    try:
-        logger.info("Running exponential integral FDM surface...")
-        surface = fm.fdm_exponential_integral_vector(
-            params.N,
-            params.Smax,
-            params.T,
-            params.K,
-            params.r,
-            params.sigma,
-            params.is_call,
-        )
-        S_grid = [i * (params.Smax / params.N) for i in range(params.N + 1)]
-        t_grid = [i * (params.T / params.M) for i in range(params.M + 1)]
-        return {"S_grid": S_grid, "t_grid": t_grid, "price_surface": surface}
-    except Exception as e:
-        logger.error(f"Exponential Integral FDM surface error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/compact", response_model=FDMResult)
-async def run_compact(params: CommonParams) -> FDMResult:
-    """
-    Run the compact finite difference method for option pricing.
-    This method computes the option price using the compact finite difference method
-    and returns the final price along with an empty result list.
-    """
-    try:
-        sigma = resolve_sigma(params)
-        rate = resolve_rate(params)
-        price = await run_in_threadpool(
-            fm.compact_fdm,  # must match signature in your C++/pybind wrapper
-            params.N,
-            params.M,
-            params.Smax,
-            params.T,
-            params.K,
-            rate,
-            sigma,
-            params.is_call,
-            params.S0,
-        )
-        return FDMResult(result=[], final_price=price)
-    except Exception as e:
-        logger.exception("❌ Error in compact_fdm")
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/dispatcher", response_model=FDMResult)
@@ -811,4 +730,168 @@ async def fdm_psor_vector(params: PSORSurfaceParams) -> VectorResult:
 
     except Exception as e:
         logger.exception("❌ PSOR vector error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# === Compact FDM Vector Endpoint ===
+@router.post("/compact_vector", response_model=VectorResult)
+async def fdm_compact_vector(params: CommonParams) -> VectorResult:
+    """
+    Run the Compact finite difference method and return the final option price vector.
+    Includes interpolated price at S0.
+    """
+    logger.info("Running fdm_compact_vector with parameters: %s", params)
+    try:
+        sigma = resolve_sigma(params)
+        rate = resolve_rate(params)
+
+        vector = await run_in_threadpool(
+            fm.compact_vector,
+            params.N,
+            params.M,
+            params.Smax,
+            params.T,
+            params.K,
+            rate,
+            sigma,
+            params.is_call,
+            params.S0,
+        )
+
+        return wrap_vector_result(vector, params.Smax, params.N)
+    except Exception as e:
+        logger.exception("Error in fdm_compact_vector")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# === Compact FDM Surface Endpoint ===
+@router.post("/compact_surface", response_model=SurfaceResult)
+async def fdm_compact_surface(params: SurfaceParams) -> SurfaceResult:
+    """
+    Run the Compact finite difference method and return the full option price surface.
+    Includes sanitized output for visualization.
+    """
+    logger.info("Running fdm_compact_surface with parameters: %s", params)
+    try:
+        if params.N <= 0 or params.M <= 0:
+            raise ValueError("N and M must be positive integers.")
+        if params.Smax <= 0 or params.T <= 0:
+            raise ValueError("Smax and T must be positive.")
+        if params.K <= 0 or params.sigma < 0:
+            raise ValueError("Strike and volatility must be valid.")
+
+        surface = await run_in_threadpool(
+            fm.compact_surface,
+            params.N,
+            params.M,
+            params.Smax,
+            params.T,
+            params.K,
+            params.r,
+            params.sigma,
+            params.is_call,
+        )
+
+        dS = params.Smax / params.N
+        dt = params.T / params.M
+        S_grid = [i * dS for i in range(params.N + 1)]
+        t_grid = [i * dt for i in range(params.M + 1)]
+
+        sanitized = [[v if math.isfinite(v) else 0.0 for v in row] for row in surface]
+
+        return {"S_grid": S_grid, "t_grid": t_grid, "price_surface": sanitized}
+    except ZeroDivisionError:
+        logger.error("Division by zero in compact surface calculation.")
+        raise HTTPException(status_code=400, detail="Division by zero.")
+    except ValueError as ve:
+        logger.error(f"Invalid compact surface input: {ve}")
+        raise HTTPException(status_code=422, detail=str(ve))
+    except Exception as e:
+        logger.error(f"Compact FDM surface error: {e}")
+        raise HTTPException(status_code=500, detail="Unexpected compact surface error.")
+
+
+@router.post("/exponential", response_model=FDMResult)
+async def run_exponential(params: CommonParams) -> FDMResult:
+    """
+    Run the exponential integral finite difference method for option pricing.
+    This method computes the option price using the exponential integral finite difference method
+    and returns the final price along with an empty result list.
+    """
+    logger.info("Running exponential_integral_fdm with parameters: %s", params)
+    try:
+        sigma = resolve_sigma(params)
+        rate = resolve_rate(params)
+        price = await run_in_threadpool(
+            fm.exponential_integral_fdm,
+            params.N,
+            params.Smax,
+            params.T,
+            params.K,
+            rate,
+            sigma,
+            params.is_call,
+            params.S0,
+        )
+        return FDMResult(result=[], final_price=price)
+    except Exception as e:
+        logger.exception("❌ Error in exponential_integral_fdm")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
+# === Exponential Integral Surface Endpoint ===
+@router.post("/exponential_surface", response_model=SurfaceResult)
+async def fdm_exponential_surface(params: SurfaceParams) -> SurfaceResult:
+    """
+    Run the exponential integral finite difference method for option pricing surface.
+    This method computes the option price surface using the exponential integral finite difference method
+    and returns the price surface along with the grid axes.
+    """
+    try:
+        logger.info("Running exponential integral FDM surface...")
+        surface = fm.fdm_exponential_integral_vector(
+            params.N,
+            params.Smax,
+            params.T,
+            params.K,
+            params.r,
+            params.sigma,
+            params.is_call,
+        )
+        S_grid = [i * (params.Smax / params.N) for i in range(params.N + 1)]
+        t_grid = [i * (params.T / params.M) for i in range(params.M + 1)]
+        return {"S_grid": S_grid, "t_grid": t_grid, "price_surface": surface}
+    except Exception as e:
+        logger.error(f"Exponential Integral FDM surface error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/compact", response_model=FDMResult)
+async def run_compact(params: CommonParams) -> FDMResult:
+    """
+    Run the compact finite difference method for option pricing.
+    This method computes the option price using the compact finite difference method
+    and returns the final price along with an empty result list.
+    """
+    try:
+        sigma = resolve_sigma(params)
+        rate = resolve_rate(params)
+        price = await run_in_threadpool(
+            fm.fdm_compact,  # must match signature in your C++/pybind wrapper
+            params.N,
+            params.M,
+            params.Smax,
+            params.T,
+            params.K,
+            rate,
+            sigma,
+            params.is_call,
+            params.S0,
+        )
+        print(price)
+        return FDMResult(result=[], final_price=price)
+    except Exception as e:
+        logger.exception("❌ Error in compact_fdm")
         raise HTTPException(status_code=500, detail=str(e))
