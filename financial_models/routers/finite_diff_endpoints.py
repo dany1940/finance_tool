@@ -189,6 +189,7 @@ async def run_fractional(params: FractionalParams) -> FDMResult:
             params.is_call,
             params.beta,
             params.S0,
+
         )
         return FDMResult(result=[], final_price=price)
     except Exception as e:

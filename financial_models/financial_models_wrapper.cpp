@@ -195,6 +195,13 @@ PYBIND11_MODULE(financial_models_wrapper, m) {
             py::arg("N"), py::arg("M"), py::arg("Smax"), py::arg("T"),
             py::arg("K"), py::arg("r"), py::arg("sigma"),
             py::arg("is_call"));
+        m.def("fractional_vector", &fdm_time_fractional,
+          py::arg("N"), py::arg("M"), py::arg("Smax"), py::arg("T"), py::arg("K"),
+          py::arg("r"), py::arg("sigma"), py::arg("isCall"), py::arg("beta"), py::arg("S0"));
+
+       m.def("fractional_surface", &fdm_time_fractional_surface,
+          py::arg("N"), py::arg("M"), py::arg("Smax"), py::arg("T"), py::arg("K"),
+          py::arg("r"), py::arg("sigma"), py::arg("isCall"), py::arg("beta"));
     m.def("solve_fdm", &solve_fdm,
           "Dispatcher for FDM methods returning interpolated price at S0",
           py::arg("method"),

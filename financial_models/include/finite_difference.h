@@ -121,16 +121,14 @@ double binomial_tree(int N, double T, double K,
                            double r, double sigma, bool isCall,
                            bool isAmerican, double S0);
 
-std::vector<std::vector<double>> fdm_time_fractional_vector(
-    int N, int M, double Smax, double T, double K,
-    double r, double sigma, bool isCall, double beta);
+std::vector<double> fdm_time_fractional_vector(int N, int M, double Smax, double T, double K,
+                                               double r, double sigma, bool isCall, double beta) ;
 
 std::vector<std::vector<double>> fdm_american_psor_vector(int N, int M, double Smax, double T, double K,
                                                           double r, double sigma, bool isCall,
                                                           double omega, int maxIter, double tol);
 
-std::vector<std::vector<double>> fdm_time_fractional_vector(int N, int M, double Smax, double T, double K,
-                                                            double r, double sigma, bool isCall, double beta);
+
 std::vector<std::vector<double>> fdm_exponential_integral_vector(int N, double Smax, double T, double K,
                                                                   double r, double sigma, bool isCall) ;
 
@@ -158,6 +156,11 @@ std::vector<double> american_psor_vector(
     int N, int M, double Smax, double T,
     double K, double r, double sigma, bool is_call,
     double omega, int maxIter, double tol);
+
+
+
+std::vector<std::vector<double>> fdm_time_fractional_surface(int N, int M, double Smax, double T, double K,
+                                                             double r, double sigma, bool isCall, double beta);
 
 #endif // FINITE_DIFFERENCE_ALL_H
 
