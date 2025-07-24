@@ -1,7 +1,9 @@
 import asyncio
 import base64
 import io
+import pandas as pd
 import logging
+import random
 from datetime import datetime, timedelta
 
 import httpx
@@ -21,14 +23,14 @@ european_methods = [
     "explicit",
     "implicit",
     "crank",
-    "fractional",
-    "exponential",
     "compact",
 ]
 american_methods = ["psor"]
 # === PAGE CONFIG ===
 page.title = "FDM Calculator"
 ui.dark_mode().enable()
+test_results_df = pd.DataFrame()
+latest_csv_filename = ""
 
 # === MAIN UI ===
 with ui.row().classes("w-full justify-center"):
@@ -234,8 +236,10 @@ with ui.row().classes("w-full justify-center"):
                 on_click=lambda: asyncio.create_task(show_surface_plot()),
                 color="purple",
             )
-            ui.button("Show Table", on_click=lambda: popup_table.open()).props(
-                "outline"
+            ui.button(
+                "Generate 20 Test Cases",
+                on_click=lambda: asyncio.create_task(generate_random_test_cases()),
+                color="red",
             )
 
 # === TABLE POPUP ===
@@ -251,10 +255,34 @@ with ui.dialog() as popup_table, ui.card().classes("bg-gray-900 p-4 w-[600px]"):
         ).classes("w-full text-white")
     ui.button("Close", on_click=popup_table.close).classes("mt-4")
 
+
+
 # === 2D/3D POPUP ===
 with ui.dialog() as popup3d, ui.card().classes("bg-gray-900 p-4 w-[1000px] h-[700px]"):
     plot3d_image = ui.image().classes("w-full h-[600px] object-contain")
     ui.button("Close", on_click=popup3d.close).classes("mt-4")
+
+
+with ui.dialog() as popup_test_table, ui.card().classes(
+    "bg-gray-900 p-4 w-full max-w-[95vw] max-h-[95vh] overflow-hidden"
+):
+    ui.label("🧪 Random Test Case Results").classes("text-white text-2xl mb-4")
+
+    with ui.row().classes("w-full items-center justify-between"):
+        method_filter = ui.select(
+            options=["All"] + european_methods + american_methods,
+            value="All",
+            label="Filter by Method"
+        ).classes("w-64 text-black")
+
+        sort_delta = ui.toggle({"Δ ↑": "Δ ↑", "Δ ↓": "Δ ↓"}, value="Δ ↑")
+
+    with ui.element("div").classes("overflow-x-auto overflow-y-auto w-full"):
+        test_case_table = ui.table(columns=[], rows=[]).classes("min-w-full text-white text-sm")
+
+    with ui.row().classes("justify-end w-full mt-4 gap-4"):
+        ui.button("Download CSV", on_click=lambda: ui.download(latest_csv_filename)).classes("bg-blue-700")
+        ui.button("Close", on_click=popup_test_table.close).classes("bg-gray-700")
 
 
 async def compute_fdm():
@@ -510,6 +538,7 @@ async def show_surface_plot() -> None:
         ui.notify(f"❌ Surface plot error: {str(e)}", type="negative")
 
 
+
 # === MATURITY ===
 def compute_maturity(start_str, end_str) -> float:
     """
@@ -526,6 +555,207 @@ def compute_maturity(start_str, end_str) -> float:
         end = start + timedelta(days=365)
     return max((end - start).total_seconds() / (365 * 24 * 60 * 60), 1e-6)
 
+
+
+
+def get_method_explanation(method: str) -> str:
+    explanations = {
+        "explicit": (
+            "**Explicit Method**:\n"
+            "- Fast, conditionally stable.\n"
+            "- CFL condition applied: (σ²·S²·Δt) / Δx² < 1.\n"
+            "- Small Δt and fine spatial grid needed.\n"
+        ),
+        "implicit": (
+            "**Implicit Method**:\n"
+            "- Unconditionally stable.\n"
+            "- Suitable for stiff PDEs and longer maturity.\n"
+            "- Requires solving tridiagonal systems.\n"
+        ),
+        "crank": (
+            "**Crank-Nicolson Method**:\n"
+            "- Combines explicit and implicit (trapezoidal rule).\n"
+            "- 2nd-order accurate in time and space.\n"
+            "- May require Rannacher smoothing for early exercise.\n"
+        ),
+        "compact": (
+            "**Compact Scheme**:\n"
+            "- Higher-order accuracy with fewer grid points.\n"
+            "- Adds spatial derivative correction terms.\n"
+            "- Good for smooth payoff and dense grids.\n"
+        ),
+        "fractional": (
+            "**Time-Fractional Method**:\n"
+            "- Captures memory effects in markets.\n"
+            "- Uses fractional Caputo derivatives.\n"
+            "- Computationally intensive.\n"
+        ),
+        "exponential": (
+            "**Exponential Integral Scheme**:\n"
+            "- Effective for exponential discounting.\n"
+            "- May use exponential transformation of grid.\n"
+            "- Handles long maturities well.\n"
+        ),
+        "psor": (
+            "**PSOR Method (American Options)**:\n"
+            "- Handles early exercise constraint.\n"
+            "- Uses projected iterative solvers.\n"
+            "- Requires careful tuning of ω (relaxation).\n"
+        ),
+        "All": (
+            "**All Methods Summary**:\n"
+            "- Explicit: Simple, fast, CFL-sensitive.\n"
+            "- Implicit: Robust, solves linear systems.\n"
+            "- Crank: Balanced, accurate, slightly costlier.\n"
+            "- Compact: High-order, efficient on dense grids.\n"
+            "- PSOR: For American options, handles early exercise.\n"
+            "- Fractional: Nonlocal memory effects.\n"
+            "- Exponential: Good for discount-sensitive long options.\n"
+        )
+    }
+    return explanations.get(method, "No explanation available.")
+
+
+
+
+def update_filtered_table():
+    if test_results_df.empty:
+        return
+
+    df = test_results_df.copy()
+    if method_filter.value != "All":
+        df = df[df["Method"] == method_filter.value]
+
+    ascending = sort_delta.value == "asc"
+    df = df.sort_values("Δ", ascending=ascending)
+
+    test_case_table.columns = [{"name": c, "label": c, "field": c} for c in df.columns]
+    test_case_table.rows = df.to_dict("records")
+
+    method_filter.on("update:model-value", lambda e: update_filtered_table())
+    sort_delta.on("update:model-value", lambda e: update_filtered_table())
+
+
+# === RANDOM TEST CASE GENERATOR ===
+async def generate_random_test_cases():
+    global test_results_df, latest_csv_filename
+
+    methods = european_methods + american_methods
+    test_results = []
+    count = 0
+
+    while count < 20:
+        method = random.choice(methods)
+        is_american = method in american_methods
+
+        # Market parameters
+        S0_val = random.uniform(40, 160)
+        K_val = random.uniform(30, 120)
+        sigma_val = random.uniform(0.1, 0.6)
+        r_val = random.uniform(0.01, 0.1)
+        T_val = random.uniform(0.1, 2.0)
+        is_call_val = random.choice([True, False])
+        Smax_val = S0_val * 2
+
+        # Base payload
+        p = {
+            "option_style": "American" if is_american else "European",
+            "vol_source": "User-defined",
+            "grid_scheme": "uniform",
+            "S0": S0_val,
+            "K": K_val,
+            "T": T_val,
+            "r": r_val,
+            "sigma": sigma_val,
+            "is_call": is_call_val,
+            "Smax": Smax_val,
+            "cfl": False,
+        }
+
+        # Method-specific calibration
+        if method == "explicit":
+            N = random.randint(30, 80)
+            M = random.randint(40, 150)
+            dx = Smax_val / N
+            dt = T_val / M
+            cfl = (sigma_val**2 * S0_val**2 * dt) / dx**2
+            if cfl > 1:
+                continue
+            p["N"] = N
+            p["M"] = M
+        elif method in ["implicit", "crank"]:
+            p["N"] = random.randint(50, 120)
+            p["M"] = random.randint(60, 250)
+        elif method == "compact":
+            p["N"] = 100
+            p["M"] = 100
+            p["dx"] = round(random.uniform(0.5, 1.5), 2)
+            p["maxIter"] = random.randint(3000, 8000)
+        elif method == "psor":
+            p.update({
+                "omega": round(random.uniform(1.1, 1.8), 2),
+                "maxIter": random.randint(5000, 15000),
+                "tol": random.choice([1e-5, 1e-6]),
+                "is_american": True,
+            })
+
+        try:
+            async with httpx.AsyncClient() as client:
+                # Run selected method
+                fdm_resp = await client.post(f"http://localhost:8000/fdm/{method}", json=p)
+                fdm_resp.raise_for_status()
+                fdm_price = float(fdm_resp.json().get("final_price", 0.0))
+
+                # Reference price: BS or Binomial
+                if not is_american:
+                    ref_payload = {
+                        "S": S0_val,
+                        "K": K_val,
+                        "T": T_val,
+                        "r": r_val,
+                        "sigma": sigma_val,
+                        "is_call": is_call_val,
+                    }
+                    ref_resp = await client.post("http://localhost:8000/fdm/black_scholes", json=ref_payload)
+                    ref_resp.raise_for_status()
+                    ref_price = float(ref_resp.json().get("price", 0.0))
+                else:
+                    ref_resp = await client.post("http://localhost:8000/fdm/binomial", json=p)
+                    ref_resp.raise_for_status()
+                    ref_price = float(ref_resp.json().get("final_price", 0.0))
+
+                delta = abs(fdm_price - ref_price)
+
+                test_results.append({
+                    "Test": count + 1,
+                    "Style": "American" if is_american else "European",
+                    "Method": method,
+                    "S0": round(S0_val, 2),
+                    "K": round(K_val, 2),
+                    "T": round(T_val, 3),
+                    "σ": round(sigma_val, 3),
+                    "r": round(r_val, 4),
+                    "Call": is_call_val,
+                    "FDM": round(fdm_price, 4),
+                    "Reference": round(ref_price, 4),
+                    "Δ": round(delta, 6),
+                })
+
+                count += 1
+
+        except Exception as e:
+            logger.warning(f"⚠️ Skipped test {count + 1}: {e}")
+            continue
+
+    # Save and display
+    test_results_df = pd.DataFrame(test_results)
+    now = datetime.now().strftime("%Y%m%d_%H%M%S")
+    latest_csv_filename = f"fdm_test_results_{now}.csv"
+    test_results_df.to_csv(latest_csv_filename, index=False)
+
+    update_filtered_table()
+    popup_test_table.open()
+    ui.notify(f"✅ Saved and displayed {len(test_results)} tests", type="positive")
 
 # === PARAM BUILD ===
 def build_params(T_calc):
