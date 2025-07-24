@@ -95,7 +95,7 @@ make
 cd financial_tool/financial_models
 
 # Start FastAPI + GUI
-uvicorn app:app --reload --host 0.0.0.0 --port 8000
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Then open:

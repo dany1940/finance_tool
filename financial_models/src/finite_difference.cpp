@@ -236,12 +236,6 @@ double fdm_american_psor(int N, int M, double Smax, double T, double K,
     return interpolate_result(V, S, S0);
 }
 
-
-
-// === Exponential Integral Finite Difference Method ===
-// Handles exponential discounting explicitly in the scheme.
-// === Exponential Integral Finite Difference Method ===
-// Handles exponential discounting explicitly in the scheme.
 double fdm_exponential_integral(int N, double Smax, double T, double K,
                                 double r, double sigma, bool isCall, double S0) {
     double dS = Smax / N;
@@ -250,46 +244,31 @@ double fdm_exponential_integral(int N, double Smax, double T, double K,
 
     std::vector<double> V(N + 1), V_new(N + 1), rhs(N + 1), S(N + 1);
 
-    // Setup grid and terminal payoff
     for (int i = 0; i <= N; ++i) {
         S[i] = i * dS;
         V[i] = isCall ? std::max(S[i] - K, 0.0) : std::max(K - S[i], 0.0);
     }
 
-    // Time stepping with exponential integral treatment
     for (int t = 0; t < M; ++t) {
-        double tau = T - t * dt;
-
         for (int i = 1; i < N; ++i) {
             double d2V = (V[i - 1] - 2 * V[i] + V[i + 1]) / (dS * dS);
-            double dV  = (V[i + 1] - V[i - 1]) / (2 * dS);
-
-            // Exponential integration: treat drift/discounting via exp(-r dt)
-            double diffusion = 0.5 * sigma * sigma * S[i] * S[i] * d2V;
-            double convection = r * S[i] * dV;
-            double discount = -r * V[i];
-
-            rhs[i] = diffusion + convection + discount;
+            double dV = (V[i + 1] - V[i - 1]) / (2 * dS);
+            rhs[i] = 0.5 * sigma * sigma * S[i] * S[i] * d2V + r * S[i] * dV - r * V[i];
         }
 
-        // Boundary conditions
+        double tau = T - t * dt;
         V_new[0] = isCall ? 0.0 : K * std::exp(-r * tau);
         V_new[N] = isCall ? (Smax - K * std::exp(-r * tau)) : 0.0;
 
-        // Apply exponential integrator
         for (int i = 1; i < N; ++i) {
-            // Incorporate exponential decay (better time integration)
-            double discount_factor = std::exp(-r * dt);
-            V_new[i] = discount_factor * (V[i] + dt * rhs[i]);
-
-            // Ensure positivity
+            V_new[i] = V[i] + dt * rhs[i];
             if (V_new[i] < 0.0) V_new[i] = 0.0;
         }
 
         V = V_new;
     }
 
-    // === Interpolate price at S0 ===
+    // === Inline Linear Interpolation ===
     if (S0 <= 0.0) return V[0];
     if (S0 >= Smax) return V[N];
 
@@ -300,9 +279,9 @@ double fdm_exponential_integral(int N, double Smax, double T, double K,
     double V_right = V[i + 1];
 
     double interp = V_left + (V_right - V_left) * (S0 - S_left) / (S_right - S_left);
+
     return interp;
 }
-
 
 // ======= Compact 4th-order Second Derivative =======
 std::vector<double> compact_4th_order_second_derivative(const std::vector<double>& V, double dx) {
@@ -882,48 +861,38 @@ std::vector<std::vector<double>> fdm_american_psor_vector(int N, int M, double S
 }
 
 
+
 std::vector<std::vector<double>> fdm_exponential_integral_vector(int N, double Smax, double T, double K,
                                                                   double r, double sigma, bool isCall) {
     double dS = Smax / N;
     double dt = 0.01;
     int M = static_cast<int>(T / dt);
 
-    std::vector<double> S(N + 1);
-    for (int i = 0; i <= N; ++i)
-        S[i] = i * dS;
-
-    std::vector<double> V(N + 1), V_new(N + 1), rhs(N + 1);
+    std::vector<double> V(N + 1), V_new(N + 1), rhs(N + 1), S(N + 1);
     std::vector<std::vector<double>> V_hist(M + 1, std::vector<double>(N + 1));
 
-    // Final payoff at maturity (t = T)
-    for (int i = 0; i <= N; ++i)
+    for (int i = 0; i <= N; ++i) {
+        S[i] = i * dS;
         V[i] = isCall ? std::max(S[i] - K, 0.0) : std::max(K - S[i], 0.0);
+    }
+    V_hist[0] = V;
 
-    V_hist[M] = V;
-
-    for (int t = M - 1; t >= 0; --t) {
+    for (int t = 1; t <= M; ++t) {
         for (int i = 1; i < N; ++i) {
             double d2V = (V[i - 1] - 2 * V[i] + V[i + 1]) / (dS * dS);
-            double dV  = (V[i + 1] - V[i - 1]) / (2 * dS);
-            rhs[i] = 0.5 * sigma * sigma * S[i] * S[i] * d2V
-                   + r * S[i] * dV - r * V[i];
+            double dV = (V[i + 1] - V[i - 1]) / (2 * dS);
+            rhs[i] = 0.5 * sigma*sigma*S[i]*S[i]*d2V + r*S[i]*dV - r*V[i];
         }
-
-        // Boundary conditions
-        double tau = T - t * dt;
-        V_new[0]  = isCall ? 0.0 : K * std::exp(-r * tau);
-        V_new[N]  = isCall ? (Smax - K * std::exp(-r * tau)) : 0.0;
-
         for (int i = 1; i < N; ++i) {
             V_new[i] = V[i] + dt * rhs[i];
-            V_new[i] *= std::exp(-r * dt);  // exponential integrator step
-            if (V_new[i] < 0.0) V_new[i] = 0.0; // safeguard
+            if (V_new[i] < 0.0) V_new[i] = 0.0;
         }
+        V_new[0] = isCall ? 0.0 : K * std::exp(-r * (T - t * dt));
+        V_new[N] = isCall ? (Smax - K * std::exp(-r * (T - t * dt))) : 0.0;
 
         V = V_new;
         V_hist[t] = V;
     }
-
     return V_hist;
 }
 
@@ -963,38 +932,28 @@ std::vector<std::vector<double>> exponential_integral_surface(
 ) {
     double dS = Smax / N;
     double dt = T / M;
-
     std::vector<double> S(N + 1);
-    for (int i = 0; i <= N; ++i)
-        S[i] = i * dS;
+    for (int i = 0; i <= N; ++i) S[i] = i * dS;
 
     std::vector<std::vector<double>> grid(M + 1, std::vector<double>(N + 1));
-
-    // Final time step: payoff
-    for (int i = 0; i <= N; ++i)
+    for (int i = 0; i <= N; ++i) {
         grid[M][i] = isCall ? std::max(S[i] - K, 0.0) : std::max(K - S[i], 0.0);
+    }
 
-    // Time stepping (backward in time)
     for (int j = M - 1; j >= 0; --j) {
-        double discount = std::exp(-r * dt);  // Exponential integrator
-
         for (int i = 1; i < N; ++i) {
-            double Si = S[i];
-            double d2V = (grid[j + 1][i - 1] - 2 * grid[j + 1][i] + grid[j + 1][i + 1]) / (dS * dS);
-            double dV = (grid[j + 1][i + 1] - grid[j + 1][i - 1]) / (2 * dS);
+            double alpha = 0.5 * sigma * sigma * i * i;
+            double beta = 0.5 * r * i;
+            double gamma = r;
 
-            double diffusion = 0.5 * sigma * sigma * Si * Si * d2V;
-            double convection = r * Si * dV;
-            double discount_term = -r * grid[j + 1][i];
-
-            double rhs = diffusion + convection + discount_term;
-            grid[j][i] = discount * (grid[j + 1][i] + dt * rhs);
+            grid[j][i] = grid[j + 1][i] +
+                         dt * (alpha * (grid[j + 1][i + 1] - 2 * grid[j + 1][i] + grid[j + 1][i - 1]) / (dS * dS)
+                         + beta * (grid[j + 1][i + 1] - grid[j + 1][i - 1]) / (2 * dS)
+                         - gamma * grid[j + 1][i]);
         }
 
-        // Boundary conditions (at time j)
-        double tau = T - j * dt;
-        grid[j][0] = isCall ? 0.0 : K * std::exp(-r * tau);
-        grid[j][N] = isCall ? (Smax - K * std::exp(-r * tau)) : 0.0;
+        grid[j][0] = isCall ? 0.0 : K * std::exp(-r * (T - j * dt));
+        grid[j][N] = isCall ? Smax - K * std::exp(-r * (T - j * dt)) : 0.0;
     }
 
     return grid;
