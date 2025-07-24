@@ -1,9 +1,8 @@
 from typing import List
 
+import financial_models_wrapper as fm
 import numpy as np
 import yfinance as yf
-
-import financial_models_wrapper as fm
 from crud.stock_analysis_models import CommonParams
 
 

@@ -2,11 +2,10 @@ import datetime
 import logging
 from typing import List
 
-from fastapi import APIRouter, HTTPException, Query
-
 from crud.exchange_models import YahooExchange, YahooExchangeResponse
 from data_transformation.analyze_data import analyze_stock_data
 from data_transformation.fetch_data import fetch_polygon_data, fetch_yahoo_data
+from fastapi import APIRouter, HTTPException, Query
 
 router = APIRouter(prefix="/stocks", tags=["Stock Processing"])
 logging.basicConfig(level=logging.INFO)

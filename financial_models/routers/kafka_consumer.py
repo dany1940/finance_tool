@@ -4,7 +4,6 @@ import logging
 
 from confluent_kafka import Consumer
 from fastapi import APIRouter
-
 from models import BinanceModel, CoinbaseModel
 
 logging.basicConfig(level=logging.INFO)

@@ -1,7 +1,8 @@
 import asyncio
 
-from financial_models.db import engine
 from models import Base
+
+from financial_models.db import engine
 
 
 async def init_db():

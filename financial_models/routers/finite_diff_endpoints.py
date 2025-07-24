@@ -2,11 +2,8 @@ import logging
 import math
 from typing import List
 
-import numpy as np
-from fastapi import APIRouter, HTTPException
-from starlette.concurrency import run_in_threadpool
-
 import financial_models_wrapper as fm
+import numpy as np
 from crud.stock_analysis_models import (
     AmericanParams,
     BinomialSurfaceParams,
@@ -22,7 +19,9 @@ from crud.stock_analysis_models import (
     SurfaceResult,
     VectorResult,
 )
+from fastapi import APIRouter, HTTPException
 from routers.volatility.utils import resolve_rate, resolve_sigma
+from starlette.concurrency import run_in_threadpool
 
 router = APIRouter(prefix="/fdm", tags=["FDM Processing"])
 logger = logging.getLogger(__name__)
@@ -196,8 +195,6 @@ async def run_fractional(params: FractionalParams) -> FDMResult:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-
-
 @router.post("/psor_surface", response_model=SurfaceResult)
 async def fdm_psor_surface(params: PSORSurfaceParams) -> SurfaceResult:
     """
@@ -252,7 +249,6 @@ async def fdm_psor_surface(params: PSORSurfaceParams) -> SurfaceResult:
     except Exception as e:
         logger.error(f"❌ PSOR surface error: {e}")
         raise HTTPException(status_code=500, detail=f"PSOR surface error: {str(e)}")
-
 
 
 @router.post("/dispatcher", response_model=FDMResult)
@@ -837,8 +833,6 @@ async def run_exponential(params: CommonParams) -> FDMResult:
     except Exception as e:
         logger.exception("❌ Error in exponential_integral_fdm")
         raise HTTPException(status_code=500, detail=str(e))
-
-
 
 
 # === Exponential Integral Surface Endpoint ===

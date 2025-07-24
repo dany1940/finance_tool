@@ -2,11 +2,10 @@
 
 import logging
 
+import fdm_gui  # This will automatically call fdm_gui layout
 from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
 from nicegui import ui
-
-import fdm_gui  # This will automatically call fdm_gui layout
 from routers.finite_diff_endpoints import router as fdm_router
 from routers.spark_processor import router as spark_router
 
