@@ -805,9 +805,9 @@ async def generate_random_test_cases():
                                 "T": round(T, 3),
                                 "σ": round(sigma, 3),
                                 "r": round(r, 4),
-                                "FDM": round(fdm_price, 4),
+                                "FDM": round(fdm_price, 6),
                                 "Reference": (
-                                    round(ref_price, 4)
+                                    round(ref_price, 6)
                                     if ref_price is not None
                                     else None
                                 ),
