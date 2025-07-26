@@ -1,7 +1,6 @@
 import asyncio
 import base64
 import io
-import pandas as pd
 import logging
 import random
 from datetime import datetime, timedelta
@@ -9,8 +8,8 @@ from datetime import datetime, timedelta
 import httpx
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from nicegui import page, ui
-
 from pyDOE import lhs
 
 # === LOGGING ===
@@ -258,15 +257,17 @@ with ui.dialog() as popup_table, ui.card().classes("bg-gray-900 p-4 w-[600px]"):
     ui.button("Close", on_click=popup_table.close).classes("mt-4")
 
 
-
 # === 2D/3D POPUP ===
 with ui.dialog() as popup3d, ui.card().classes("bg-gray-900 p-4 w-[1000px] h-[700px]"):
     plot3d_image = ui.image().classes("w-full h-[600px] object-contain")
     ui.button("Close", on_click=popup3d.close).classes("mt-4")
 
 
-with ui.dialog() as popup_test_table, ui.card().classes(
-    "bg-gray-900 p-4 w-full max-w-[95vw] max-h-[95vh] overflow-hidden"
+with (
+    ui.dialog() as popup_test_table,
+    ui.card().classes(
+        "bg-gray-900 p-4 w-full max-w-[95vw] max-h-[95vh] overflow-hidden"
+    ),
 ):
     ui.label("🧪 Random Test Case Results").classes("text-white text-2xl mb-4")
 
@@ -274,7 +275,7 @@ with ui.dialog() as popup_test_table, ui.card().classes(
         method_filter = ui.select(
             options=["All"] + european_methods + american_methods,
             value="All",
-            label="Filter by Method"
+            label="Filter by Method",
         ).classes("w-64 text-black")
 
         sort_delta = ui.toggle({"Δ ↑": "Δ ↑", "Δ ↓": "Δ ↓"}, value="Δ ↑")
@@ -282,10 +283,14 @@ with ui.dialog() as popup_test_table, ui.card().classes(
         method_filter.on("update:model-value", lambda e: update_filtered_table())
 
     with ui.element("div").classes("overflow-x-auto overflow-y-auto w-full"):
-        test_case_table = ui.table(columns=[], rows=[]).classes("min-w-full text-white text-sm")
+        test_case_table = ui.table(columns=[], rows=[]).classes(
+            "min-w-full text-white text-sm"
+        )
 
     with ui.row().classes("justify-end w-full mt-4 gap-4"):
-        ui.button("Download CSV", on_click=lambda: ui.download(latest_csv_filename)).classes("bg-blue-700")
+        ui.button(
+            "Download CSV", on_click=lambda: ui.download(latest_csv_filename)
+        ).classes("bg-blue-700")
         ui.button("Close", on_click=popup_test_table.close).classes("bg-gray-700")
 
 
@@ -542,7 +547,6 @@ async def show_surface_plot() -> None:
         ui.notify(f"❌ Surface plot error: {str(e)}", type="negative")
 
 
-
 # === MATURITY ===
 def compute_maturity(start_str, end_str) -> float:
     """
@@ -558,8 +562,6 @@ def compute_maturity(start_str, end_str) -> float:
     except:
         end = start + timedelta(days=365)
     return max((end - start).total_seconds() / (365 * 24 * 60 * 60), 1e-6)
-
-
 
 
 def get_method_explanation(method: str) -> str:
@@ -615,10 +617,9 @@ def get_method_explanation(method: str) -> str:
             "- PSOR: For American options, handles early exercise.\n"
             "- Fractional: Nonlocal memory effects.\n"
             "- Exponential: Good for discount-sensitive long options.\n"
-        )
+        ),
     }
     return explanations.get(method, "No explanation available.")
-
 
 
 def update_filtered_table():
@@ -640,13 +641,12 @@ def update_filtered_table():
     test_case_table.rows = df.to_dict("records")
 
 
-
 def sort_results(results: list[dict], order: str) -> list[dict]:
     reverse = order == "Δ ↓"
     return sorted(
         results,
         key=lambda x: float(x["Δ"]) if x["Δ"] is not None else float("inf"),
-        reverse=reverse
+        reverse=reverse,
     )
 
 
@@ -661,6 +661,7 @@ def generate_regime_parameters(sample):
     S0 = K * m
     Smax = 2 * S0
     return S0, K, sigma, r, T, Smax
+
 
 # === TEST CASE GENERATOR ===
 async def generate_random_test_cases():
@@ -679,7 +680,9 @@ async def generate_random_test_cases():
             count = 0
             sample_idx = 0
             while count < 100 and sample_idx < len(lhs_samples):
-                S0, K, sigma, r, T, Smax = generate_regime_parameters(lhs_samples[sample_idx])
+                S0, K, sigma, r, T, Smax = generate_regime_parameters(
+                    lhs_samples[sample_idx]
+                )
                 sample_idx += 1
 
                 p = {
@@ -701,7 +704,7 @@ async def generate_random_test_cases():
                     M = random.randint(40, 150)
                     dx = Smax / N
                     dt = T / M
-                    cfl = (sigma ** 2 * S0 ** 2 * dt) / dx ** 2
+                    cfl = (sigma**2 * S0**2 * dt) / dx**2
                     if cfl > 1:
                         continue
                     p["N"] = N
@@ -718,65 +721,88 @@ async def generate_random_test_cases():
                     p["maxIter"] = random.randint(3000, 8000)
 
                 elif method == "psor":
-                    p.update({
-                        "omega": round(random.uniform(1.1, 1.8), 2),
-                        "maxIter": random.randint(5000, 15000),
-                        "tol": random.choice([1e-5, 1e-6]),
-                        "is_american": True,
-                    })
+                    p.update(
+                        {
+                            "omega": round(random.uniform(1.1, 1.8), 2),
+                            "maxIter": random.randint(5000, 15000),
+                            "tol": random.choice([1e-5, 1e-6]),
+                            "is_american": True,
+                        }
+                    )
 
                     for key in ["option_style", "vol_source", "grid_scheme", "cfl"]:
                         p.pop(key, None)
                 try:
                     async with httpx.AsyncClient() as client:
-                        fdm_resp = await client.post(f"http://localhost:8000/fdm/{method}", json=p)
+                        fdm_resp = await client.post(
+                            f"http://localhost:8000/fdm/{method}", json=p
+                        )
                         fdm_resp.raise_for_status()
                         fdm_price = float(fdm_resp.json().get("final_price", 0.0))
 
                         if not is_american:
                             ref_payload = {
-                                "S": S0, "K": K, "T": T, "r": r,
-                                "sigma": sigma, "is_call": is_call_val
+                                "S": S0,
+                                "K": K,
+                                "T": T,
+                                "r": r,
+                                "sigma": sigma,
+                                "is_call": is_call_val,
                             }
-                            ref_resp = await client.post("http://localhost:8000/fdm/black_scholes", json=ref_payload)
+                            ref_resp = await client.post(
+                                "http://localhost:8000/fdm/black_scholes",
+                                json=ref_payload,
+                            )
                             ref_resp.raise_for_status()
                             ref_price = float(ref_resp.json().get("price", 0.0))
 
                         elif method == "psor":
                             binomial_payload = {
-                            "N": random.randint(80, 200),
-                            "T": float(T),
-                            "K": float(K),
-                            "r": float(r),
-                            "sigma": float(sigma),
-                            "is_call": bool(is_call_val),
-                            "is_american": False,
-                            "S0": float(S0)
+                                "N": random.randint(80, 200),
+                                "T": float(T),
+                                "K": float(K),
+                                "r": float(r),
+                                "sigma": float(sigma),
+                                "is_call": bool(is_call_val),
+                                "is_american": False,
+                                "S0": float(S0),
                             }
-                            ref_resp = await client.post("http://localhost:8000/fdm/binomial", json=binomial_payload)
+                            ref_resp = await client.post(
+                                "http://localhost:8000/fdm/binomial",
+                                json=binomial_payload,
+                            )
                             ref_resp.raise_for_status()
                             ref_price = float(ref_resp.json().get("final_price", 0.0))
-
 
                         else:
                             ref_price = None  # ✅ MODIFIED: Skip reference for PSOR
 
-                        delta = abs(fdm_price - ref_price) if ref_price is not None else None  # ✅ MODIFIED: Guarded delta
+                        delta = (
+                            abs(fdm_price - ref_price)
+                            if ref_price is not None
+                            else None
+                        )  # ✅ MODIFIED: Guarded delta
 
-                        test_results.append({
-                            "Test": len(test_results) + 1,
-                            "Method": method,
-                            "Style": "American" if is_american else "European",
-                            "Call": is_call_val,
-                            "S0": round(S0, 2),
-                            "K": round(K, 2),
-                            "T": round(T, 3),
-                            "σ": round(sigma, 3),
-                            "r": round(r, 4),
-                            "FDM": round(fdm_price, 4),
-                            "Reference": round(ref_price, 4) if ref_price is not None else None,
-                            "Δ": round(delta, 6) if delta is not None else None,
-                        })
+                        test_results.append(
+                            {
+                                "Test": len(test_results) + 1,
+                                "Method": method,
+                                "Style": "American" if is_american else "European",
+                                "Call": is_call_val,
+                                "S0": round(S0, 2),
+                                "K": round(K, 2),
+                                "T": round(T, 3),
+                                "σ": round(sigma, 3),
+                                "r": round(r, 4),
+                                "FDM": round(fdm_price, 4),
+                                "Reference": (
+                                    round(ref_price, 4)
+                                    if ref_price is not None
+                                    else None
+                                ),
+                                "Δ": round(delta, 6) if delta is not None else None,
+                            }
+                        )
                         count += 1
 
                 except Exception as e:
@@ -788,6 +814,7 @@ async def generate_random_test_cases():
     update_filtered_table()
     popup_test_table.open()
     ui.notify(f"✅ Generated {len(test_results)} test cases", type="positive")
+
 
 # === PARAM BUILD ===
 def build_params(T_calc):
