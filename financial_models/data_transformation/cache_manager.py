@@ -1,6 +1,6 @@
+from datetime import timedelta
 import json
 import logging
-from datetime import timedelta
 
 import redis
 

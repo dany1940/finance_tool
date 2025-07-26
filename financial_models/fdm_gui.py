@@ -1,15 +1,15 @@
 import asyncio
 import base64
+from datetime import datetime, timedelta
 import io
 import logging
 import random
-from datetime import datetime, timedelta
 
 import httpx
 import matplotlib.pyplot as plt
+from nicegui import background_tasks, page, ui
 import numpy as np
 import pandas as pd
-from nicegui import background_tasks, page, ui
 from pyDOE import lhs
 
 # === LOGGING ===
@@ -19,6 +19,7 @@ logger = logging.getLogger("fdm_gui")
 # === STATE ===
 latest_vector = {"S_grid": [], "prices": [], "final_price": 0.0}
 bs_price_label = None
+last_T = {"value": None}  # Track last T for interest rate updates
 # === VALID METHODS BY OPTION STYLE ===
 european_methods = [
     "explicit",
@@ -87,9 +88,45 @@ with ui.row().classes("w-full justify-center"):
             K = ui.number("K (Strike)", value=50).classes("w-56 border border-gray-700")
         ## Market parameters
         with ui.row().classes("gap-4"):
-            r = ui.number("r (Interest rate)", value=0.05).classes(
-                "w-56 border border-gray-700"
-            )
+            interest_mode = ui.select(
+                ["Automatic", "Manual"], label="Interest Rate Mode", value="Automatic"
+            ).classes("w-56")
+
+            with ui.dialog() as manual_r_popup, ui.card().classes("bg-gray-900 p-4"):
+                ui.label("Enter Interest Rate").classes("text-white text-lg")
+                r = ui.number("Manual r", value=0.00).classes("w-56")
+                ui.button("OK", on_click=lambda: manual_r_popup.close())
+
+            # Track last mode to detect re-selection
+            last_mode = {"value": interest_mode.value}
+
+            async def handle_interest_mode_change():
+                if interest_mode.value == "Automatic":
+                    try:
+                        # Compute maturity from datetime fields
+                        T = compute_maturity(datetime_start.value, datetime_end.value)
+                        # Call FastAPI endpoint to fetch interest rate
+                        async with httpx.AsyncClient() as client:
+                            response = await client.get(
+                                f"http://localhost:8000/fdm/rate?T={T}"
+                            )
+                            response.raise_for_status()
+                            rate_data = response.json()
+                            fetched_r = float(rate_data["fetched_rate_decimal"])
+                            print(f"Fetched rate: {fetched_r:.4f} for T={T:.4f} years")
+                            r.set_value(fetched_r)
+                            (print(fetched_r))
+                    except Exception as e:
+                        ui.notify(
+                            f"Failed to fetch rate automatically: {e}", type="negative"
+                        )
+
+                else:
+                    manual_r_popup.open()
+
+            interest_mode.on(
+                "update:model-value", lambda e: handle_interest_mode_change
+            )  # Always triggers on click
             sigma = ui.number("σ (Volatility)", value=0.2).classes(
                 "w-56 border border-gray-700"
             )
@@ -99,6 +136,7 @@ with ui.row().classes("w-full justify-center"):
             S0 = ui.number("S₀ (Spot Price)", value=50.0).classes(
                 "w-56 border border-gray-700"
             )
+
         # Optional parameters for specific methods
         with ui.row().classes("gap-4"):
             datetime_start = (
@@ -244,6 +282,7 @@ with ui.row().classes("w-full justify-center"):
                 ),
                 color="red",
             )
+            r.set_value(0.00)  # Default interest rate
 
 
 async def generate_random_test_cases_wrapper():
@@ -310,6 +349,20 @@ async def compute_fdm():
     """
     try:
         T_calc = compute_maturity(datetime_start.value, datetime_end.value)
+        # Re-fetch r only if interest mode is Automatic and T has changed
+        if interest_mode.value == "Automatic" and T_calc != last_T["value"]:
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(
+                        f"http://localhost:8000/fdm/rate?T={T_calc}"
+                    )
+                    response.raise_for_status()
+                    rate_data = response.json()
+                    fetched_r = float(rate_data["fetched_rate_decimal"])
+                    r.set_value(fetched_r)
+                    print(f"Auto-refetched interest rate r: {fetched_r} for T={T_calc}")
+            except Exception as e:
+                ui.notify(f"Failed to auto-refetch rate: {e}", type="negative")
         params = build_params(T_calc)
 
         async with httpx.AsyncClient() as client:
@@ -570,7 +623,9 @@ def compute_maturity(start_str, end_str) -> float:
         end = datetime.strptime(end_str.strip(), "%Y-%m-%d")
     except:
         end = start + timedelta(days=365)
-    return max((end - start).total_seconds() / (365 * 24 * 60 * 60), 1e-6)
+
+    T = max((end - start).total_seconds() / (365 * 24 * 60 * 60), 1e-6)
+    return T
 
 
 def get_method_explanation(method: str) -> str:

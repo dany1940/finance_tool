@@ -1,9 +1,9 @@
 from typing import List
 
+from crud.stock_analysis_models import CommonParams
 import financial_models_wrapper as fm
 import numpy as np
 import yfinance as yf
-from crud.stock_analysis_models import CommonParams
 
 
 # === Historical Volatility ===

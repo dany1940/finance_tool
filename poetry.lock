@@ -902,6 +902,21 @@ files = [
 ]
 
 [[package]]
+name = "dotenv"
+version = "0.9.9"
+description = "Deprecated package"
+optional = false
+python-versions = "*"
+groups = ["main"]
+markers = "python_version <= \"3.11\""
+files = [
+    {file = "dotenv-0.9.9-py2.py3-none-any.whl", hash = "sha256:29cf74a087b31dafdb5a446b6d7e11cbce8ed2741540e2339c69fbef92c94ce9"},
+]
+
+[package.dependencies]
+python-dotenv = "*"
+
+[[package]]
 name = "et-xmlfile"
 version = "2.0.0"
 description = "An implementation of lxml.xmlfile for the standard library"
@@ -1039,6 +1054,22 @@ type1 = ["xattr"]
 ufo = ["fs (>=2.2.0,<3)"]
 unicode = ["unicodedata2 (>=15.1.0)"]
 woff = ["brotli (>=1.0.1)", "brotlicffi (>=0.8.0)", "zopfli (>=0.1.4)"]
+
+[[package]]
+name = "fredapi"
+version = "0.5.2"
+description = "Python API for Federal Reserve Economic Data (FRED) from St. Louis Fed"
+optional = false
+python-versions = "*"
+groups = ["main"]
+markers = "python_version <= \"3.11\""
+files = [
+    {file = "fredapi-0.5.2-py3-none-any.whl", hash = "sha256:961817ec8d70e58886ff7302d3dda908614ad99f77831a59833c4fc3f6150155"},
+    {file = "fredapi-0.5.2.tar.gz", hash = "sha256:405ca048abed4207d93dbc9b7ee8c46d6b473483650323e2f1c094af83d4b247"},
+]
+
+[package.dependencies]
+pandas = "*"
 
 [[package]]
 name = "frozendict"
@@ -4046,4 +4077,4 @@ repair = ["scipy (>=1.6.3)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10, <3.12"
-content-hash = "15feb5f9f59973f53ef5d9c3b5b2176623a30bda9721035ae98974eaa688c1f6"
+content-hash = "68aa45620b23ab6a26dee6818d75ef21d9d9e9999cf005f44ba051e14f740342"

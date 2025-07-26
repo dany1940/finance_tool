@@ -125,6 +125,16 @@ class VectorResult(BaseModel):
     final_price: float
 
 
+# === Pydantic Response Model ===
+class FredRateResponse(BaseModel):
+    T_years: float = Field(..., description="Maturity in years")
+    fred_ticker: str = Field(..., description="FRED series ID")
+    fetched_rate_decimal: float = Field(..., description="Rate in decimal (e.g. 0.045)")
+    fetched_rate_percent: str = Field(
+        ..., description="Rate as a percent (e.g. '4.5%')"
+    )
+
+
 class ResponseBlackscholes(BaseModel):
     price: float = Field(
         ..., description="Calculated option price using Black-Scholes formula"

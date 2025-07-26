@@ -1,18 +1,30 @@
 import logging
 import math
+import os
 from typing import List
 
+from crud.stock_analysis_models import (
+    AmericanParams,
+    BinomialSurfaceParams,
+    BlackScholesParams,
+    CommonParams,
+    CrankNicolsonParams,
+    DispatcherParams,
+    FDMResult,
+    FractionalParams,
+    FredRateResponse,
+    PSORSurfaceParams,
+    ResponseBlackscholes,
+    ResultItem,
+    SurfaceParams,
+    SurfaceResult,
+    VectorResult,
+)
+from dotenv import load_dotenv
+from fastapi import APIRouter, HTTPException
 import financial_models_wrapper as fm
 import numpy as np
-from crud.stock_analysis_models import (AmericanParams, BinomialSurfaceParams,
-                                        BlackScholesParams, CommonParams,
-                                        CrankNicolsonParams, DispatcherParams,
-                                        FDMResult, FractionalParams,
-                                        PSORSurfaceParams,
-                                        ResponseBlackscholes, ResultItem,
-                                        SurfaceParams, SurfaceResult,
-                                        VectorResult)
-from fastapi import APIRouter, HTTPException
+import requests
 from routers.volatility.utils import resolve_rate, resolve_sigma
 from scipy.ndimage import gaussian_filter
 from starlette.concurrency import run_in_threadpool
@@ -20,6 +32,78 @@ from starlette.concurrency import run_in_threadpool
 router = APIRouter(prefix="/fdm", tags=["FDM Processing"])
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+
+
+# === FRED Ticker Selection Based on Maturity ===
+def get_fred_ticker_by_maturity(T: float) -> str:
+    if T <= 0.25:
+        return "DGS3MO"
+    elif T <= 0.5:
+        return "DGS6MO"
+    elif T <= 1.0:
+        return "DGS1"
+    elif T <= 2.0:
+        return "DGS2"
+    elif T <= 5.0:
+        return "DGS5"
+    elif T <= 7.0:
+        return "DGS7"
+    elif T <= 10.0:
+        return "DGS10"
+    else:
+        return "DGS30"
+
+
+# === Fetch FRED Yield ===
+def get_yield_series(ticker: str) -> float:
+    load_dotenv()
+    """
+    Fetch the yield series from FRED for the given ticker.
+    Returns the yield as a decimal (e.g., 0.02 for 2%).
+    Raises ValueError if the response is unexpected.
+    """
+    API_KEY = os.getenv("FRED_API_KEY", "")
+    if not API_KEY:
+        raise ValueError("FRED_API_KEY environment variable not set")
+
+    url = "https://api.stlouisfed.org/fred/series/observations"
+    params = {
+        "series_id": ticker,
+        "api_key": API_KEY,
+        "file_type": "json",
+        "sort_order": "desc",
+        "limit": 1,
+    }
+
+    response = requests.get(url, params=params)
+    response.raise_for_status()
+    data = response.json()
+
+    try:
+        return float(data["observations"][0]["value"]) / 100.0
+    except (KeyError, IndexError, ValueError):
+        raise ValueError(f"Unexpected FRED response for {ticker}: {data}")
+
+
+# === Main Endpoint ===
+@router.get("/rate", response_model=FredRateResponse)
+async def fetch_risk_free_rate(T: float) -> FredRateResponse:
+    """
+    Fetch a risk-free rate from FRED based on time to maturity T (in years).
+    """
+    try:
+        ticker = get_fred_ticker_by_maturity(T)
+        rate = get_yield_series(ticker)
+
+        return FredRateResponse(
+            T_years=round(T, 6),
+            fred_ticker=ticker,
+            fetched_rate_decimal=round(rate, 6),
+            fetched_rate_percent=f"{round(rate * 100, 2)}%",
+        )
+    except Exception as e:
+        logger.exception("FRED rate fetch failed.")
+        raise HTTPException(status_code=500, detail=f"FRED rate fetch error: {str(e)}")
 
 
 def wrap_result(result: List[float]) -> FDMResult:
