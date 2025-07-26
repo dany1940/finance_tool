@@ -666,7 +666,7 @@ def generate_regime_parameters(sample):
 async def generate_random_test_cases():
     global test_results_df, latest_csv_filename
     european_methods = ["explicit", "implicit", "crank", "compact"]
-    american_methods = ["psor", "binomial"]
+    american_methods = ["psor"]
     all_methods = european_methods + american_methods
     test_results = []
     now = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -724,14 +724,9 @@ async def generate_random_test_cases():
                         "tol": random.choice([1e-5, 1e-6]),
                         "is_american": True,
                     })
-                    # ✅ MODIFIED: Remove unsupported keys for PSOR
+
                     for key in ["option_style", "vol_source", "grid_scheme", "cfl"]:
                         p.pop(key, None)
-
-                elif method == "binomial":
-                    for key in ["option_style", "vol_source", "grid_scheme", "cfl"]:
-                        p.pop(key, None)  # ✅ This was missing
-
                 try:
                     async with httpx.AsyncClient() as client:
                         fdm_resp = await client.post(f"http://localhost:8000/fdm/{method}", json=p)
@@ -747,10 +742,21 @@ async def generate_random_test_cases():
                             ref_resp.raise_for_status()
                             ref_price = float(ref_resp.json().get("price", 0.0))
 
-                        elif method == "binomial":
-                            ref_resp = await client.post("http://localhost:8000/fdm/binomial", json=p)
+                        elif method == "psor":
+                            binomial_payload = {
+                            "N": random.randint(80, 200),
+                            "T": float(T),
+                            "K": float(K),
+                            "r": float(r),
+                            "sigma": float(sigma),
+                            "is_call": bool(is_call_val),
+                            "is_american": False,
+                            "S0": float(S0)
+                            }
+                            ref_resp = await client.post("http://localhost:8000/fdm/binomial", json=binomial_payload)
                             ref_resp.raise_for_status()
                             ref_price = float(ref_resp.json().get("final_price", 0.0))
+
 
                         else:
                             ref_price = None  # ✅ MODIFIED: Skip reference for PSOR
