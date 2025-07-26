@@ -4,23 +4,17 @@ from typing import List
 
 import financial_models_wrapper as fm
 import numpy as np
-from crud.stock_analysis_models import (
-    AmericanParams,
-    BinomialSurfaceParams,
-    BlackScholesParams,
-    CommonParams,
-    DispatcherParams,
-    FDMResult,
-    FractionalParams,
-    PSORSurfaceParams,
-    ResponseBlackscholes,
-    ResultItem,
-    SurfaceParams,
-    SurfaceResult,
-    VectorResult,
-)
+from crud.stock_analysis_models import (AmericanParams, BinomialSurfaceParams,
+                                        BlackScholesParams, CommonParams,
+                                        CrankNicolsonParams, DispatcherParams,
+                                        FDMResult, FractionalParams,
+                                        PSORSurfaceParams,
+                                        ResponseBlackscholes, ResultItem,
+                                        SurfaceParams, SurfaceResult,
+                                        VectorResult)
 from fastapi import APIRouter, HTTPException
 from routers.volatility.utils import resolve_rate, resolve_sigma
+from scipy.ndimage import gaussian_filter
 from starlette.concurrency import run_in_threadpool
 
 router = APIRouter(prefix="/fdm", tags=["FDM Processing"])
@@ -409,8 +403,7 @@ async def crank_vector(params: CommonParams) -> VectorResult:
 async def fdm_explicit_surface(params: SurfaceParams) -> SurfaceResult:
     """
     Run the explicit finite difference method for option pricing surface.
-    This method computes the option price surface using the explicit finite difference method
-    and returns the price surface along with the grid axes.
+    Computes the option price surface using explicit FDM and returns price grid and axes.
     """
     try:
         if params.N <= 0 or params.M <= 0:
@@ -421,6 +414,8 @@ async def fdm_explicit_surface(params: SurfaceParams) -> SurfaceResult:
             raise ValueError("Strike and volatility must be valid.")
 
         logger.info("Running explicit FDM surface...")
+
+        # Call the explicit FDM surface function (likely C++ backend via pybind11)
         surface = fm.fdm_explicit_surface(
             params.N,
             params.M,
@@ -432,16 +427,19 @@ async def fdm_explicit_surface(params: SurfaceParams) -> SurfaceResult:
             params.is_call,
         )
 
+        # === Compute consistent grids ===
         dS = params.Smax / params.N
-        dt = params.T / params.M
-
         S_grid = [i * dS for i in range(params.N + 1)]
-        t_grid = [i * dt for i in range(params.M + 1)]
 
-        # Sanitize surface
+        actual_M = len(surface) - 1  # surface is (M+1 rows)
+        dt = params.T / actual_M
+        t_grid = [i * dt for i in range(actual_M + 1)]
+
+        # Sanitize the surface: remove any NaN/Inf
         sanitized = [[v if math.isfinite(v) else 0.0 for v in row] for row in surface]
 
-        return {"S_grid": S_grid, "t_grid": t_grid, "price_surface": sanitized}
+        return SurfaceResult(S_grid=S_grid, t_grid=t_grid, price_surface=sanitized)
+
     except ZeroDivisionError:
         logger.error("Division by zero in explicit surface calculation.")
         raise HTTPException(status_code=400, detail="Division by zero.")
@@ -505,25 +503,26 @@ async def fdm_implicit_surface(params: SurfaceParams) -> SurfaceResult:
         )
 
 
+from scipy.ndimage import gaussian_filter
+
+
 @router.post("/crank_surface", response_model=SurfaceResult)
 async def fdm_crank_surface(params: SurfaceParams) -> SurfaceResult:
     """
     Run the Crank-Nicolson finite difference method for option pricing surface.
-    This method computes the option price surface using the Crank-Nicolson finite difference method
-    and returns the price surface along with the grid axes.
     """
     logger.info("Running crank_nicolson_fdm_surface with parameters: %s", params)
     try:
-        # Guard against invalid parameters early
         if params.N <= 0 or params.M <= 0:
             raise ValueError("N and M must be positive integers.")
         if params.Smax <= 0 or params.T <= 0:
             raise ValueError("Smax and T must be positive.")
         if params.sigma < 0 or params.K <= 0:
-            raise ValueError("Sigma and Strike must be non-negative.")
+            raise ValueError("Sigma and Strike must be valid.")
 
-        logger.info(f"Running Crank-Nicolson FDM surface with: {params.dict()}")
+        rannacher = getattr(params, "rannacher_smoothing", False)
 
+        # Call C++ FDM function (no signature change)
         surface = await run_in_threadpool(
             fm.fdm_crank_nicolson_surface,
             params.N,
@@ -534,33 +533,38 @@ async def fdm_crank_surface(params: SurfaceParams) -> SurfaceResult:
             params.r,
             params.sigma,
             params.is_call,
+            rannacher,
         )
 
-        # Replace invalid float values in the surface
+        # === CLEAN + OPTIONAL SMOOTHING ===
         sanitized = [[v if math.isfinite(v) else 0.0 for v in row] for row in surface]
+        Z = np.array(sanitized)
 
+        # Smooth Z surface (visual only, optional)
+        Z_smooth = gaussian_filter(Z, sigma=1)  # Adjust sigma if needed
+
+        # Reconstruct sanitized surface from smoothed numpy array
+        smoothed_surface = Z_smooth.tolist()
+
+        # Build axes
+        actual_M = len(surface) - 1
+        dt = params.T / actual_M
         dS = params.Smax / params.N
-        dt = params.T / params.M
-
-        if not math.isfinite(dS) or not math.isfinite(dt) or dS <= 0 or dt <= 0:
-            raise ValueError("Computed grid steps (dS or dt) are invalid.")
 
         S_grid = [i * dS for i in range(params.N + 1)]
-        t_grid = [j * dt for j in range(params.M + 1)]
+        t_grid = [j * dt for j in range(actual_M + 1)]
 
         return {
             "S_grid": S_grid,
             "t_grid": t_grid,
-            "price_surface": sanitized,
+            "price_surface": smoothed_surface,
         }
 
     except ZeroDivisionError:
-        logger.error("Division by zero in FDM surface calculation.")
-        raise HTTPException(
-            status_code=400, detail="Division by zero encountered in FDM logic."
-        )
+        logger.error("Division by zero in Crank-Nicolson surface calculation.")
+        raise HTTPException(status_code=400, detail="Division by zero.")
     except ValueError as ve:
-        logger.error(f"Invalid input for FDM surface: {ve}")
+        logger.error(f"Invalid Crank-Nicolson input: {ve}")
         raise HTTPException(status_code=422, detail=str(ve))
     except Exception as e:
         logger.error(f"Unexpected Crank-Nicolson error: {e}")

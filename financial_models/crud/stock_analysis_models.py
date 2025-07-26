@@ -143,6 +143,10 @@ class SurfaceParams(BaseModel):
     is_call: bool
 
 
+class CrankNicolsonParams(SurfaceParams):
+    pass
+
+
 class PSORSurfaceParams(BaseModel):
     N: int
     M: int

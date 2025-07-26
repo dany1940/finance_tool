@@ -514,7 +514,6 @@ std::vector<double> fdm_crank_nicolson_vector(int N, int M, double Smax, double 
     return V;
 }
 
-
 // === Explicit FDM Surface ====
 std::vector<std::vector<double>> fdm_explicit_surface(
     int N, int M, double Smax, double T, double K,
@@ -523,29 +522,43 @@ std::vector<std::vector<double>> fdm_explicit_surface(
     double dS = Smax / N;
     double dt = T / M;
 
+    // --- CFL Stability Check ---
+    double max_stable_dt = 0.5 * dS * dS / (sigma * sigma * Smax * Smax);
+    if (dt > max_stable_dt) {
+        dt = max_stable_dt;
+        M = static_cast<int>(T / dt);
+        std::cerr << "[Warning] Time step reduced for stability: M = " << M << ", dt = " << dt << "\n";
+    }
+
     std::vector<std::vector<double>> surface;
     std::vector<double> V(N + 1);
 
-    // Initial condition
+    // Initial condition (payoff at maturity)
     for (int i = 0; i <= N; ++i) {
         double S = i * dS;
         V[i] = is_call ? std::max(S - K, 0.0) : std::max(K - S, 0.0);
     }
     surface.push_back(V);
 
-    // Time stepping
+    // Time stepping (backward in time)
     for (int t = 1; t <= M; ++t) {
         std::vector<double> Vnew(N + 1);
         double tau = t * dt;
 
+        // Boundary conditions
         Vnew[0] = is_call ? 0.0 : K * std::exp(-r * (T - tau));
         Vnew[N] = is_call ? (Smax - K * std::exp(-r * (T - tau))) : 0.0;
 
+        // Update interior grid
         for (int i = 1; i < N; ++i) {
-            double j = static_cast<double>(i);
-            double a = 0.5 * dt * (sigma * sigma * j * j - r * j);
-            double b = 1 - dt * (sigma * sigma * j * j + r);
-            double c = 0.5 * dt * (sigma * sigma * j * j + r * j);
+            double S = i * dS;
+            double A = sigma * sigma * S * S / (dS * dS);
+            double B = r * S / dS;
+
+            double a = 0.5 * dt * (A - B);
+            double b = 1.0 - dt * (A + r);
+            double c = 0.5 * dt * (A + B);
+
             Vnew[i] = a * V[i - 1] + b * V[i] + c * V[i + 1];
         }
 
@@ -555,7 +568,6 @@ std::vector<std::vector<double>> fdm_explicit_surface(
 
     return surface;
 }
-
 
 // === Implicit FDM Surface ====
 std::vector<std::vector<double>> fdm_implicit_surface(
@@ -568,38 +580,44 @@ std::vector<std::vector<double>> fdm_implicit_surface(
     std::vector<std::vector<double>> surface;
     std::vector<double> V(N + 1);
 
-    // Initial condition
+    // Initial condition (payoff at maturity)
     for (int i = 0; i <= N; ++i) {
         double S = i * dS;
         V[i] = is_call ? std::max(S - K, 0.0) : std::max(K - S, 0.0);
     }
     surface.push_back(V);
 
-    // Coefficients
+    // Coefficients: PDE-consistent using actual S = i * dS
     std::vector<double> a(N - 1), b(N - 1), c(N - 1);
     for (int i = 1; i < N; ++i) {
-        double j = static_cast<double>(i);
-        a[i - 1] = -0.5 * dt * (sigma * sigma * j * j - r * j);
-        b[i - 1] = 1 + dt * (sigma * sigma * j * j + r);
-        c[i - 1] = -0.5 * dt * (sigma * sigma * j * j + r * j);
+        double S = i * dS;
+        double A = sigma * sigma * S * S / (dS * dS);
+        double B = r * S / dS;
+
+        a[i - 1] = -0.5 * dt * (A - B);
+        b[i - 1] = 1 + dt * (A + r);
+        c[i - 1] = -0.5 * dt * (A + B);
     }
 
+    // Time stepping backward from maturity
     for (int t = 1; t <= M; ++t) {
         std::vector<double> d(N - 1);
         for (int i = 1; i < N; ++i) {
             d[i - 1] = V[i];
         }
 
-        // Boundary adjustments
-        d[0]   -= a[0] * (is_call ? 0.0 : K * std::exp(-r * dt * t));
-        d[N-2] -= c[N-2] * (is_call ? (Smax - K * std::exp(-r * dt * t)) : 0.0);
+        // Apply boundary condition adjustments
+        double tau = dt * t;
+        d[0]   -= a[0]   * (is_call ? 0.0 : K * std::exp(-r * (T - tau)));
+        d[N-2] -= c[N-2] * (is_call ? (Smax - K * std::exp(-r * (T - tau))) : 0.0);
 
+        // Solve tridiagonal system for interior points
         std::vector<double> Vnew_inner = solve_tridiagonal(a, b, c, d);
 
+        // Build full new solution including boundaries
         std::vector<double> Vnew(N + 1);
-        Vnew[0] = is_call ? 0.0 : K * std::exp(-r * dt * t);
-        Vnew[N] = is_call ? (Smax - K * std::exp(-r * dt * t)) : 0.0;
-
+        Vnew[0] = is_call ? 0.0 : K * std::exp(-r * (T - tau));
+        Vnew[N] = is_call ? (Smax - K * std::exp(-r * (T - tau))) : 0.0;
         for (int i = 1; i < N; ++i) {
             Vnew[i] = Vnew_inner[i - 1];
         }
@@ -612,10 +630,10 @@ std::vector<std::vector<double>> fdm_implicit_surface(
 }
 
 
-// === Crank-Nicolson FDM Surface ==========
+
 std::vector<std::vector<double>> fdm_crank_nicolson_surface(
     int N, int M, double Smax, double T, double K,
-    double r, double sigma, bool is_call, bool rannacher_smoothing) {
+    double r, double sigma, bool is_call, bool /*rannacher_smoothing*/) {
 
     double dS = Smax / N;
     double dt = T / M;
@@ -623,14 +641,14 @@ std::vector<std::vector<double>> fdm_crank_nicolson_surface(
     std::vector<std::vector<double>> surface;
     std::vector<double> V(N + 1);
 
-    // Initial condition
+    // === Initial condition: Payoff at t = T ===
     for (int i = 0; i <= N; ++i) {
         double S = i * dS;
         V[i] = is_call ? std::max(S - K, 0.0) : std::max(K - S, 0.0);
     }
-    surface.push_back(V);
+    surface.push_back(V);  // Save first row (t=0)
 
-    // Coefficients
+    // === Precompute coefficients ===
     std::vector<double> a(N - 1), b(N - 1), c(N - 1);
     std::vector<double> alpha(N - 1), beta(N - 1), gamma(N - 1);
 
@@ -648,22 +666,35 @@ std::vector<std::vector<double>> fdm_crank_nicolson_surface(
         gamma[i - 1] = 0.25 * dt * (sigma2j2 + rj);
     }
 
+    // === Time stepping: backward in time ===
     for (int t = 1; t <= M; ++t) {
         std::vector<double> d(N - 1);
-        for (int i = 1; i < N; ++i) {
-            d[i - 1] = alpha[i - 1] * V[i - 1] + beta[i - 1] * V[i] + gamma[i - 1] * V[i + 1];
+
+        // Use Backward Euler for first two time steps (Rannacher smoothing)
+        if (t <= 2) {
+            for (int i = 1; i < N; ++i) {
+                d[i - 1] = V[i];  // implicit RHS
+            }
+        } else {
+            for (int i = 1; i < N; ++i) {
+                d[i - 1] = alpha[i - 1] * V[i - 1] + beta[i - 1] * V[i] + gamma[i - 1] * V[i + 1];
+            }
         }
 
-        d[0]   += a[0] * (is_call ? 0.0 : K * std::exp(-r * dt * t));
-        d[N-2] += c[N-2] * (is_call ? (Smax - K * std::exp(-r * dt * t)) : 0.0);
+        // === Boundary conditions on RHS ===
+        double disc = std::exp(-r * dt * t);
+        d[0]   += a[0] * (is_call ? 0.0 : K * disc);
+        d[N-2] += c[N-2] * (is_call ? (Smax - K * disc) : 0.0);
 
-        std::vector<double> Vnew_inner = solve_tridiagonal(a, b, c, d);
+        // === Solve tridiagonal system ===
+        std::vector<double> V_inner = solve_tridiagonal(a, b, c, d);
+
         std::vector<double> Vnew(N + 1);
-        Vnew[0] = is_call ? 0.0 : K * std::exp(-r * dt * t);
-        Vnew[N] = is_call ? (Smax - K * std::exp(-r * dt * t)) : 0.0;
+        Vnew[0] = is_call ? 0.0 : K * disc;
+        Vnew[N] = is_call ? (Smax - K * disc) : 0.0;
 
         for (int i = 1; i < N; ++i) {
-            Vnew[i] = Vnew_inner[i - 1];
+            Vnew[i] = V_inner[i - 1];
         }
 
         surface.push_back(Vnew);
@@ -725,6 +756,8 @@ std::vector<std::vector<double>> fdm_compact_surface(int N, int M, double Smax, 
 
     std::vector<std::vector<double>> surface;
     std::vector<double> S(N + 1), V(N + 1);
+
+    // Initial condition at T = 0
     for (int i = 0; i <= N; ++i) {
         S[i] = i * dS;
         V[i] = isCall ? std::max(S[i] - K, 0.0) : std::max(K - S[i], 0.0);
@@ -732,27 +765,34 @@ std::vector<std::vector<double>> fdm_compact_surface(int N, int M, double Smax, 
     surface.push_back(V);
 
     std::vector<double> a(N - 1), b(N - 1), c(N - 1), rhs(N - 1);
+
     for (int t = 0; t < M; ++t) {
         for (int i = 1; i < N; ++i) {
-            double j = static_cast<double>(i);
-            a[i - 1] = -0.5 * dt * (sigma * sigma * j * j - r * j);
-            b[i - 1] = 1.0 + dt * (sigma * sigma * j * j + r);
-            c[i - 1] = -0.5 * dt * (sigma * sigma * j * j + r * j);
-            rhs[i - 1] = V[i];
+            double Si = S[i];
+            double A = sigma * sigma * Si * Si / (dS * dS);
+            double B = r * Si / dS;
+
+            a[i - 1] = -0.5 * dt * (A - B);
+            b[i - 1] = 1.0 + dt * (A + r);
+            c[i - 1] = -0.5 * dt * (A + B);
+            rhs[i - 1] = V[i];  // right-hand side is just current value
         }
 
-        std::vector<double> Vnew = solve_tridiagonal(a, b, c, rhs);
+        std::vector<double> Vnew_inner = solve_tridiagonal(a, b, c, rhs);
+
+        std::vector<double> Vnew(N + 1);
         for (int i = 1; i < N; ++i)
-            V[i] = std::max(Vnew[i - 1], 0.0);
+            Vnew[i] = Vnew_inner[i - 1];
 
         double t_curr = (t + 1) * dt;
-        V[0] = isCall ? 0.0 : K * std::exp(-r * (T - t_curr));
-        V[N] = isCall ? (Smax - K * std::exp(-r * (T - t_curr))) : 0.0;
+        Vnew[0] = isCall ? 0.0 : K * std::exp(-r * (T - t_curr));
+        Vnew[N] = isCall ? (Smax - K * std::exp(-r * (T - t_curr))) : 0.0;
 
+        V = Vnew;
         surface.push_back(V);
     }
 
-    return surface;  // S0 present but not used
+    return surface;
 }
 
 std::vector<double> fdm_compact_vector(int N, int M, double Smax, double T, double K,

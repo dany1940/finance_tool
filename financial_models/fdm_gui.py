@@ -9,7 +9,7 @@ import httpx
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from nicegui import page, ui
+from nicegui import background_tasks, page, ui
 from pyDOE import lhs
 
 # === LOGGING ===
@@ -239,9 +239,18 @@ with ui.row().classes("w-full justify-center"):
             )
             ui.button(
                 "Generate Random Test Cases",
-                on_click=lambda: asyncio.create_task(generate_random_test_cases()),
+                on_click=lambda: background_tasks.create(
+                    generate_random_test_cases_wrapper()
+                ),
                 color="red",
             )
+
+
+async def generate_random_test_cases_wrapper():
+    print("Generating random test cases...")
+    await asyncio.sleep(1)  # Yield control to allow UI updates
+    await generate_random_test_cases()
+
 
 # === TABLE POPUP ===
 with ui.dialog() as popup_table, ui.card().classes("bg-gray-900 p-4 w-[600px]"):
@@ -684,6 +693,8 @@ async def generate_random_test_cases():
                     lhs_samples[sample_idx]
                 )
                 sample_idx += 1
+                if sample_idx % 10 == 0:
+                    await asyncio.sleep(0)  # Yield control every 10 samples
 
                 p = {
                     "option_style": "American" if is_american else "European",
