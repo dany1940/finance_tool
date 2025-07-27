@@ -107,9 +107,7 @@ with ui.row().classes("w-full justify-center"):
                         T = compute_maturity(datetime_start.value, datetime_end.value)
                         # Call FastAPI endpoint to fetch interest rate
                         async with httpx.AsyncClient() as client:
-                            response = await client.get(
-                                f"http://localhost:8000/fdm/rate?T={T}"
-                            )
+                            response = await client.get(f"http://localhost:8000/fdm/rate?T={T}")
                             response.raise_for_status()
                             rate_data = response.json()
                             fetched_r = float(rate_data["fetched_rate_decimal"])
@@ -117,15 +115,13 @@ with ui.row().classes("w-full justify-center"):
                             r.set_value(fetched_r)
                             (print(fetched_r))
                     except Exception as e:
-                        ui.notify(
-                            f"Failed to fetch rate automatically: {e}", type="negative"
-                        )
+                        ui.notify(f"Failed to fetch rate automatically: {e}", type="negative")
 
                 else:
                     manual_r_popup.open()
 
             interest_mode.on(
-                "update:model-value", lambda e: handle_interest_mode_change
+                "click", lambda e: handle_interest_mode_change()
             )  # Always triggers on click
             sigma = ui.number("σ (Volatility)", value=0.2).classes(
                 "w-56 border border-gray-700"
@@ -284,7 +280,6 @@ with ui.row().classes("w-full justify-center"):
             )
             r.set_value(0.00)  # Default interest rate
 
-
 async def generate_random_test_cases_wrapper():
     print("Generating random test cases...")
     await asyncio.sleep(1)  # Yield control to allow UI updates
@@ -353,18 +348,16 @@ async def compute_fdm():
         if interest_mode.value == "Automatic" and T_calc != last_T["value"]:
             try:
                 async with httpx.AsyncClient() as client:
-                    response = await client.get(
-                        f"http://localhost:8000/fdm/rate?T={T_calc}"
-                    )
+                    response = await client.get(f"http://localhost:8000/fdm/rate?T={T_calc}")
                     response.raise_for_status()
                     rate_data = response.json()
                     fetched_r = float(rate_data["fetched_rate_decimal"])
                     r.set_value(fetched_r)
-                    print(f"Auto-refetched interest rate r: {fetched_r} for T={T_calc}")
+                    logger.info(f"Auto-refetched interest rate r: {fetched_r} for T={T_calc}")
             except Exception as e:
                 ui.notify(f"Failed to auto-refetch rate: {e}", type="negative")
         params = build_params(T_calc)
-
+        logger.info(f"Running FDM with params: {params.get(r)}, {params.get(T_calc)}")
         async with httpx.AsyncClient() as client:
             # Run FDM solver
             resp_fdm = await client.post(
@@ -373,7 +366,7 @@ async def compute_fdm():
             resp_fdm.raise_for_status()
             data = resp_fdm.json()
             final = float(data.get("final_price", 0.0))
-            print(f"The final is: {final:}")
+            logger.info(f"FDM final price: {params}")
             # Clamp absurdly high or negative values (optional safeguard)
             if abs(final) > 1e4:
                 final_price.text = f"Final Price: {final:.4e}"  # scientific
