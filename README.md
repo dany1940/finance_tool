@@ -1,3 +1,4 @@
+
 # 📌 High-Performance Finite Difference Method (FDM) Option Pricing System
 
 🚀 **Built with Python, C++, Pybind11, FastAPI, and NiceGUI — Optimized for Financial Modeling and Real-Time Visualization** 🚀
@@ -32,19 +33,8 @@ The system integrates:
 
 ## 📌 Folder Structure Overview
 
-```
-financial_tool/
-├── financial_models/
-│   ├── fdm_gui.py                 # GUI frontend (NiceGUI + Matplotlib)
-│   ├── routers/                   # FastAPI routers
-│   ├── src/                       # C++ source files (.cpp)
-│   ├── include/                   # C++ headers
-│   ├── build/                     # Compiled object files
-│   ├── financial_models_wrapper.cpp/.so # Pybind11 integration
-│   ├── main.py                    # FastAPI entrypoint
-│   ├── Makefile                   # Build C++ FDM solvers
-│   └── tests/                     # Pytest test suite
-```
+financial_tool/ ├── financial_models/ │ ├── fdm_gui.py # GUI frontend (NiceGUI + Matplotlib) │ ├── routers/ # FastAPI routers │ ├── src/ # C++ source files (.cpp) │ ├── include/ # C++ headers │ ├── build/ # Compiled object files │ ├── financial_models_wrapper.cpp/.so # Pybind11 integration │ ├── main.py # FastAPI entrypoint │ ├── Makefile # Build C++ FDM solvers │ └── tests/ # Pytest test suite
+
 
 ---
 
@@ -55,83 +45,63 @@ financial_tool/
 #### ✅ Linux/macOS
 
 ```bash
-# Prerequisites
 sudo apt install python3.11 python3.11-venv g++ make cmake
 
-# Install Poetry
 curl -sSL https://install.python-poetry.org | python3.11 -
 
-# Clone repo and initialize
 cd financial_tool
 poetry shell
 poetry install
 
-# Compile C++ solvers
 make
-```
+✅ Windows 
 
-#### ✅ Windows (via WSL recommended)
+# Step 1: Install Python 3.11+ from https://www.python.org/downloads/windows/
+# Make sure to check "Add Python to PATH" during installation
 
-```bash
-# Use WSL with Ubuntu
-sudo apt update
-sudo apt install python3.11 python3.11-venv g++ make cmake
+# Step 2: Install Poetry (user-level, no admin needed)
+(Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | python -
 
-# Install Poetry
-curl -sSL https://install.python-poetry.org | python3.11 -
+# Close and reopen PowerShell
 
-# Clone and build
+# Step 3: Verify Poetry installed
+poetry --version
+
+# Step 4: Create project folder and initialize
+mkdir financial_tool
 cd financial_tool
+poetry new financial_models
+cd financial_models
+
+# Step 5: Activate Poetry environment
 poetry shell
+
+# Step 6: Add dependencies
+poetry add fastapi uvicorn nicegui matplotlib numpy
+
+# Step 7: If repo cloned, install dependencies
 poetry install
+
+# Step 8: Compile C++ solvers (run Makefile if supported)
 make
-```
+▶️ 2. Run the Application
 
----
-
-### ▶️ 2. Run the Application
-
-```bash
 cd financial_tool/financial_models
-
-# Start FastAPI + GUI
 uvicorn app:app --reload --host 0.0.0.0 --port 8000
-```
+Open in your browser:
+🧪 Swagger API: http://localhost:8000/docs
+🖥️ FDM GUI Frontend: http://localhost:8000/
 
-Then open:
-🧪 **Swagger API:** http://localhost:8000/docs
-🖥️ **FDM GUI Frontend:** http://localhost:8000
+✅ 3. Run Tests
 
----
-
-### ✅ 3. Run Tests
-
-```bash
 cd financial_tool/financial_models
 poetry run pytest tests/
-```
+📌 Example Endpoints
 
----
+POST /fdm/explicit – Compute price vector using explicit scheme
+POST /fdm/explicit_surface – Return full price surface for 3D visualization
+Similar endpoints for implicit, crank, american, etc.
 
-## 📌 Example Endpoints
 
-- `POST /fdm/explicit` – Compute price vector using explicit scheme
-- `POST /fdm/explicit_surface` – Return full price surface for 3D visualization
-- Similar endpoints available for `implicit`, `crank`, `american`, etc.
-
----
-
-## 📌 Next Improvements
-
-- ⏱ Add asynchronous queueing (e.g., Celery or Redis) for batch runs
-- 📈 Support CSV/Excel export of computed surfaces
-- 💡 Add calibration and volatility models
-- 🧠 Machine Learning for pattern recognition or parameter inference
-- 📊 Interactive dashboard with Plotly or NiceGUI DataGrid
-
----
-
-## 📌 Authors
-
-Developed by **Florin Dumitrascu**
+Developed by Florin Dumitrascu
 King’s College London | Quantitative Financial Modelling

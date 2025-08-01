@@ -402,7 +402,7 @@ async def compute_fdm():
 
                 comparison_label.text = (
                     f"{method.value.capitalize()} vs Black-Scholes:\n"
-                    f"FDM: {smart_format(final)} | BS: {smart_format(bs_price)} | Δ: {smart_format(diff)}"
+                    f"FDM: {smart_format(final)} | BS: {smart_format(bs_price)} | absolute error: {smart_format(diff)}"
                 )
 
             else:
@@ -418,7 +418,7 @@ async def compute_fdm():
                 implicit_result = resp_implicit.json().get("final_price", 0.0)
 
                 diff = abs(final - implicit_result)
-                comparison_label.text = f"PSOR vs Implicit:\nPSOR: {final:.4f} | Implicit: {implicit_result:.4f} | Δ: {diff:.4f}"
+                comparison_label.text = f"PSOR vs Implicit:\nPSOR: {final:.4f} | Implicit: {implicit_result:.4f} | absolute error: {diff:.4f}"
 
     except Exception as e:
         logger.exception("FDM Error")
@@ -457,7 +457,7 @@ async def compare_with_binomial() -> None:
 
         diff = abs(result_psor - result_binom)
         final_price.text = f"Final Price (PSOR): {result_psor:.4f}"
-        comparison_label.text = f"📊 PSOR (American): {result_psor:.4f} vs Binomial (European): {result_binom:.4f} | Δ = {diff:.4f}"
+        comparison_label.text = f"📊 PSOR (American): {result_psor:.4f} vs Binomial (European): {result_binom:.4f} | absolute error = {diff:.4f}"
 
     except Exception as e:
         logger.exception("Binomial Comparison Error")
