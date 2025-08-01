@@ -24,8 +24,6 @@ The system integrates:
 - ✅ Implicit Scheme
 - ✅ Crank-Nicolson Scheme
 - ✅ American Option Pricing (via PSOR)
-- ✅ Exponential Integral
-- ✅ Fractional Time Derivatives
 - ✅ Compact Schemes (Advanced)
 - ✅ Surface Generation for 3D Visualization
 
@@ -54,7 +52,7 @@ poetry shell
 poetry install
 
 make
-✅ Windows 
+✅ Windows
 
 # Step 1: Install Python 3.11+ from https://www.python.org/downloads/windows/
 # Make sure to check "Add Python to PATH" during installation
